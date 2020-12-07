@@ -1,0 +1,342 @@
+package games;
+
+import ginrummy.GinRummyGame;
+
+import players.SimpleFakeGinRummyPlayer;
+import players.handeval.EnsembleHandEvalPlayer;
+import players.handeval.IndexEnsembleHandEvalPlayer;
+import players.handeval.KnockOnGinKnockDecider;
+import ginrummy.GinRummyPlayer;
+
+import players.handeval.MeldabilityHandEvaluator;
+import players.handeval.ConvHandEvaluator;
+import players.handeval.DeadwoodDrawDecider;
+import players.handeval.DeadwoodHandEvaluator;
+import players.handeval.HandEvaluator; 
+
+import players.handeval.KnockOnGinKnockDecider;
+import players.handeval.MeldOnlyDrawDecider;
+
+import players.ParamList;
+import players.PerformanceTracker;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+
+import java.io.FileWriter;
+import java.io.BufferedWriter;
+
+/*
+This class is a tournament that allows players to play game with each other and display the result accordingly
+*/
+public class Tournament {
+    public static int numGamePerPair = 50; 
+
+    SimpleFakeGinRummyPlayer simplePlayer;
+    EnsembleHandEvalPlayer knockOnGinPlayer;
+    EnsembleHandEvalPlayer meldabilityPlayer;
+    EnsembleHandEvalPlayer convPlayer;
+    EnsembleHandEvalPlayer deadwoodPlayer;
+    IndexEnsembleHandEvalPlayer indexPlayer;
+    //all player will use the same paramList
+    ParamList[] paramList; 
+
+    PerformanceTracker[] myPerformanceTracker;
+
+    HashMap<Integer, GinRummyPlayer> idToPlayer;
+    HashMap<Integer, String> idToDescription;
+
+    protected static final boolean TESTING = false;
+    protected static final boolean EXPORT_TO_CSV = true;
+    
+
+
+    protected static final int SIMPLE_PLAYER_ID = 0;
+    protected static final int KNOCK_ON_GIN_PLAYER_ID = 1;
+    protected static final int MELDABILITY_PLAYER_ID = 2;
+    protected static final int CONV_PLAYER_ID = 3;
+    protected static final int DEADWOOD_PLAYER_ID = 4;
+    protected static final int INDEX_PLAYER_ID = 5;
+
+    protected static final int NUM_PLAYER = 6;
+    protected static final int TOTAL_GAME_PER_PLAYER = (NUM_PLAYER - 1) * numGamePerPair;
+
+    public int gameID;
+    public int roundID;
+
+
+    
+    /*
+        This array contains the result of a pair of players plays with each other
+        The index int the left is the number of games player win against other
+        For example, result[1][2] - number of game player 1 wins against player 2
+        result[2][1] - number of game player 2 wins against player 1
+    */
+    int[][] result; 
+    double[][] winRate; //win rate of one player vs other player
+    
+
+    /*
+    This array contains sum of the match win per player 
+    (over a total of TOTAL_GAME_PER_PLAYER matches)
+    */
+    int[] score;
+    double[] totalWinRate; //win rate of one player / TOTAL_GAME_PER_PLAYER
+
+    
+    
+    public Tournament(ParamList[] paramList){
+        this.paramList = paramList;
+        simplePlayer = new SimpleFakeGinRummyPlayer(paramList[SIMPLE_PLAYER_ID]);
+        knockOnGinPlayer = new EnsembleHandEvalPlayer(paramList[KNOCK_ON_GIN_PLAYER_ID],
+                           new DeadwoodHandEvaluator());
+        knockOnGinPlayer.setKnockDecider(new KnockOnGinKnockDecider());
+        knockOnGinPlayer.setDrawDecider(new DeadwoodDrawDecider());
+        
+        meldabilityPlayer = new EnsembleHandEvalPlayer(paramList[MELDABILITY_PLAYER_ID], 
+                            new MeldabilityHandEvaluator(paramList[MELDABILITY_PLAYER_ID]));
+        meldabilityPlayer.setKnockDecider(new KnockOnGinKnockDecider());
+        meldabilityPlayer.setDrawDecider(new MeldOnlyDrawDecider());
+
+        convPlayer = new EnsembleHandEvalPlayer(paramList[CONV_PLAYER_ID], 
+                    new ConvHandEvaluator(paramList[CONV_PLAYER_ID]));
+        convPlayer.setKnockDecider(new KnockOnGinKnockDecider());
+        convPlayer.setDrawDecider(new MeldOnlyDrawDecider());
+
+        deadwoodPlayer = new EnsembleHandEvalPlayer(paramList[DEADWOOD_PLAYER_ID], new DeadwoodHandEvaluator()); //may need fix in the future if constrctor changes
+        deadwoodPlayer.setKnockDecider(new KnockOnGinKnockDecider());
+        deadwoodPlayer.setDrawDecider(new MeldOnlyDrawDecider());
+
+        indexPlayer = new IndexEnsembleHandEvalPlayer(paramList[INDEX_PLAYER_ID], 
+                    new ConvHandEvaluator(paramList[INDEX_PLAYER_ID]),
+                    new MeldabilityHandEvaluator(paramList[INDEX_PLAYER_ID]),
+                    new DeadwoodHandEvaluator() );
+        indexPlayer.setKnockDecider(new KnockOnGinKnockDecider());
+        indexPlayer.setDrawDecider(new MeldOnlyDrawDecider());    
+
+        idToPlayer = new HashMap<>();
+
+        idToPlayer.put(SIMPLE_PLAYER_ID, simplePlayer);
+        idToPlayer.put(KNOCK_ON_GIN_PLAYER_ID, knockOnGinPlayer);
+        idToPlayer.put(MELDABILITY_PLAYER_ID, meldabilityPlayer);
+        idToPlayer.put(CONV_PLAYER_ID, convPlayer);
+        idToPlayer.put(DEADWOOD_PLAYER_ID, deadwoodPlayer);
+        idToPlayer.put(INDEX_PLAYER_ID, indexPlayer);
+
+        idToDescription = new HashMap<>();
+        idToDescription.put(SIMPLE_PLAYER_ID, "Simple player");
+        idToDescription.put(KNOCK_ON_GIN_PLAYER_ID, "Knock on gin player");
+        idToDescription.put(MELDABILITY_PLAYER_ID, "Meldability player");
+        idToDescription.put(CONV_PLAYER_ID, "Conv player");
+        idToDescription.put(DEADWOOD_PLAYER_ID, "Deadwood player");
+        idToDescription.put(INDEX_PLAYER_ID, "Index player");
+
+        result = new int[NUM_PLAYER][NUM_PLAYER];
+        winRate = new double[NUM_PLAYER][NUM_PLAYER];
+        score = new int[NUM_PLAYER];
+        totalWinRate = new double[NUM_PLAYER];
+
+        TestingGame.setPlayVerbose(false);
+        GinRummyGame.setPlayVerbose(false);
+
+        myPerformanceTracker = new PerformanceTracker[NUM_PLAYER];
+        for(int i = 0; i < NUM_PLAYER; i++){
+            if(idToPlayer.get(i) instanceof SimpleFakeGinRummyPlayer){
+                SimpleFakeGinRummyPlayer player = (SimpleFakeGinRummyPlayer)idToPlayer.get(i);
+                myPerformanceTracker[i] = player.myPerformanceTracker;
+            }
+            else
+                myPerformanceTracker[i] = null;
+        }
+
+        gameID = 0;
+        roundID = 0;
+    }
+    // public Tournament(){
+    //     ParamList[] paramLists = new ParamList[NUM_PLAYER];
+    //     this(paramLists);
+    // }
+    /*
+    This constructor receive two ArrayList of HandEvaluator and weight to pass to the indexPlayer. Should call this one to make the 
+    IndexEnsembleHandEvalPlayer plays properly
+    */
+    // public Tournament(ParamList paramList, ArrayList<HandEvaluator> allHe, ArrayList<Double> allWeight){
+    //     this(paramList);
+    //     if(allHe.size() != allWeight.size()){
+    //         System.out.println("Not applicable. The size of two ArrayList should be the same.");
+    //     }
+    //     else{
+    //         for(int i = 0; i < allHe.size(); i++){
+    //             indexPlayer.addHandEvaluator(allHe.get(i), allWeight.get(i) );
+    //         }
+    //     }
+
+    // }
+    public void playGame() throws Exception{
+        FileWriter file_game = new FileWriter("game_level_data.csv");
+        BufferedWriter writer_game = new BufferedWriter(file_game);
+        // writer.write("numSelfTurnsToKnock,numOppTurnsToKnock,numSelfFaceUpCardsDrawn,numOppFaceUpCardsDrawn,numSelfMeldsAtKnock,numSelfRunMeldsAtKnock,numSelfRankMeldsAtKnock,numOppMeldsAtKnock,numOppRunMeldsAtKnock,numOppRankMeldsAtKnock");
+        FileWriter file_round = new FileWriter("round_level_data.csv");
+        BufferedWriter writer_round = new BufferedWriter(file_round);
+        if(EXPORT_TO_CSV){
+            writer_game.write("playerID,opponentID,gameID,numRounds,numSelfKnocks,numOppKnocks,numSelfUndercuts,numOppUndercuts,numSelfGins,numSelfCardsLaidOff,numOppCardsLaidOff");
+            writer_game.newLine();
+            writer_round.write("playerID,opponentID,gameID,roundID,numSelfTurnsToKnock,numOppTurnsToKnock,numSelfFaceUpCardsDrawn,numOppFaceUpCardsDrawn,numSelfMeldsAtKnock,numSelfRunMeldsAtKnock,numSelfRankMeldsAtKnock,numOppMeldsAtKnock,numOppRunMeldsAtKnock,numOppRankMeldsAtKnock");
+            writer_round.newLine();
+        }
+
+        for(int i = 0; i < NUM_PLAYER; i++){
+            for(int j = 0; j < NUM_PLAYER; j++){
+                if(i == j || i == MELDABILITY_PLAYER_ID && j == CONV_PLAYER_ID 
+                || i == CONV_PLAYER_ID && j == MELDABILITY_PLAYER_ID){
+                    continue;
+                }
+                if(TESTING){
+                    System.out.println("Player " + idToDescription.get(i) + " (with id " + i 
+                    + ") and player " + idToDescription.get(j) + " (with id " + j + ") is playing ");
+                }
+                GinRummyGame game = new GinRummyGame(idToPlayer.get(i), idToPlayer.get(j));
+                for(int ngame = 0; ngame < numGamePerPair; ngame++){
+                    int winner = game.play();
+                    if(winner == 0)
+                        result[i][j] ++;
+                    
+                    if(EXPORT_TO_CSV){
+                            //Game level data
+                            writer_game.write(i + ",");
+                            writer_game.write(j + ",");
+                            writer_game.write(gameID + ",");
+                            writer_game.write(myPerformanceTracker[i].numRounds + ",");
+                            writer_game.write(myPerformanceTracker[i].numSelfKnocks + ",");
+                            writer_game.write(myPerformanceTracker[i].numOppKnocks + ",");
+                            writer_game.write(myPerformanceTracker[i].numSelfUndercuts + ",");
+                            writer_game.write(myPerformanceTracker[i].numOppUndercuts + ",");
+                            writer_game.write(myPerformanceTracker[i].numSelfGins + ",");
+                            writer_game.write(myPerformanceTracker[i].numSelfCardsLaidOff + ",");
+                            writer_game.write(myPerformanceTracker[i].numOppCardsLaidOff + "");
+                            writer_game.newLine();
+
+                            //Round level data
+                            for(int k = 0; k < myPerformanceTracker[i].numRounds; k++){
+                                writer_round.write(i + ",");
+                                writer_round.write(j + ",");
+                                writer_round.write(gameID + ",");
+                                writer_round.write(roundID + ",");
+
+                                writer_round.write(myPerformanceTracker[i].listNumSelfTurnsToKnock.get(k) + ",");
+                                writer_round.write(myPerformanceTracker[i].listNumOppTurnsToKnock.get(k) + ",");
+
+                                writer_round.write(myPerformanceTracker[i].listNumSelfFaceUpCardsDrawn.get(k) + ",");
+                                writer_round.write(myPerformanceTracker[i].listNumOppFaceUpCardsDrawn.get(k) + ",");
+
+                                writer_round.write(myPerformanceTracker[i].listNumSelfMeldsAtKnock.get(k) + ",");
+                                writer_round.write(myPerformanceTracker[i].listNumSelfRunMeldsAtKnock.get(k) + ",");
+                                writer_round.write(myPerformanceTracker[i].listNumSelfRankMeldsAtKnock.get(k) + ",");
+
+                                writer_round.write(myPerformanceTracker[i].listNumOppMeldsAtKnock.get(k) + ",");
+                                writer_round.write(myPerformanceTracker[i].listNumOppRunMeldsAtKnock.get(k) + ",");
+                                writer_round.write(myPerformanceTracker[i].listNumOppRankMeldsAtKnock.get(k) + "");
+
+                                writer_round.newLine();
+                                roundID++;
+                            }
+                            gameID++;
+                    }
+                }
+                if(TESTING){
+                    System.out.println("Player " + i + " win against player " + j + " total of " + result[i][j] + " matches over the total of " + numGamePerPair + " win rate: " + (double)result[i][j] / numGamePerPair);
+                }
+                score[i] += result[i][j];
+            }
+        }
+        //I give them some scores since their matches with each other is skipped (CONV_PLAYER_ID vs MELDABILITY_PLAYER_ID)
+        score[MELDABILITY_PLAYER_ID] += numGamePerPair / 2;
+        score[CONV_PLAYER_ID] += numGamePerPair / 2;
+        result[MELDABILITY_PLAYER_ID][CONV_PLAYER_ID] = numGamePerPair / 2;
+        result[CONV_PLAYER_ID][MELDABILITY_PLAYER_ID] = numGamePerPair / 2;
+
+        for(int i = 0; i < NUM_PLAYER; i++){
+            totalWinRate[i] = (double)score[i] / TOTAL_GAME_PER_PLAYER; 
+            for(int j = 0; j < NUM_PLAYER; j++){
+                winRate[i][j] = (double)result[i][j] / numGamePerPair;
+            }
+        }
+        writer_game.close();
+        writer_round.close();
+    }
+    public static String matrixToString(int[][] result){
+        String ans = "";
+        for(int i = 0; i < result.length; i++){
+            ans += Arrays.toString(result[i]) + System.lineSeparator();
+        }
+        return ans;
+    }
+    public static String matrixToString(double[][] result){
+        String ans = "";
+        for(int i = 0; i < result.length; i++){
+            for(int j = 0; j < result[0].length; j++){
+                ans += String.format("%.3f", result[i][j]) + " ";
+            }
+            ans += System.lineSeparator();
+            // ans += Arrays.toString(result[i]) + System.lineSeparator();
+        }
+        return ans;
+    }
+    @Override
+    public String toString(){
+        String ans = "-----------------------------Tournament toString------------------------------" + System.lineSeparator();
+        for(int i = 0; i < NUM_PLAYER; i++){
+            ans += "Player " + idToDescription.get(i) + " wins " + score[i] + 
+            " matches over the total of " + TOTAL_GAME_PER_PLAYER + ", win rate: " + totalWinRate[i] + 
+            System.lineSeparator();
+        }
+        ans += "-------------------------------------------------------------------------------------" + System.lineSeparator();
+        ans += "All score: " + Arrays.toString(score) + System.lineSeparator();
+        ans += "Matrix of score - [row][col]: Number of winning of player row between matches of player row and player col" + System.lineSeparator();
+        ans += matrixToString(result) + System.lineSeparator();
+        
+        ans += "All win rate: " + Arrays.toString(totalWinRate) + System.lineSeparator();
+        ans += "Matrix of win rate - [row][col]: Percentage of winning of player row between matches of player row and player col" + System.lineSeparator();
+        ans += matrixToString(winRate) + System.lineSeparator();
+        return ans;
+    }
+    public static void testTournament() throws Exception{
+
+        ParamList[] paramList  = new ParamList[NUM_PLAYER];
+        paramList[SIMPLE_PLAYER_ID] = new ParamList(new double[0]);
+        paramList[KNOCK_ON_GIN_PLAYER_ID] = new ParamList(new double[]{1});
+        paramList[MELDABILITY_PLAYER_ID] = new ParamList(new double[]{1});
+        paramList[CONV_PLAYER_ID] = new ParamList(new double[]{1});
+        paramList[DEADWOOD_PLAYER_ID] = new ParamList(new double[]{1});
+        paramList[INDEX_PLAYER_ID] = new ParamList(new double[]{0.15, 0.15, 0.7});
+
+        for(int i = 0; i < NUM_PLAYER; i++){
+            paramList[i].set(ParamList.CH_ONEAWAY, 0.374);
+            paramList[i].set(ParamList.CH_TWOAWAY, 0.149);
+            paramList[i].set(ParamList.CH_SAMERANK, 0.477);
+            paramList[i].set(ParamList.MC_SELF_LOW_OBTAINABILITY, 0.086);
+            paramList[i].set(ParamList.MC_SELF_RATIO_FOR_UNKNOWN, 0.885);
+            paramList[i].set(ParamList.MC_SELF_WRANK, 0.565);
+            paramList[i].set(ParamList.MC_SELF_WRUN, 0.435);
+            paramList[i].set(ParamList.ST_DECREASE_PROB_OPP_DRAWS_FACEUP_ONEAWAY, 0.9);
+            paramList[i].set(ParamList.ST_DECREASE_PROB_OPP_DRAWS_FACEUP_TWOAWAY, 0.376);
+            paramList[i].set(ParamList.ST_DECREASE_PROB_OPP_DRAWS_FACEUP_SAMERANK, 0.9);
+            paramList[i].set(ParamList.ST_INCREASE_PROB_OPP_DECLINES_FACEUP_ONEAWAY, 0.376);
+            paramList[i].set(ParamList.ST_INCREASE_PROB_OPP_DECLINES_FACEUP_TWOAWAY, 0.304);
+            paramList[i].set(ParamList.ST_INCREASE_PROB_OPP_DECLINES_FACEUP_SAMERANK, 0.376);
+            paramList[i].set(ParamList.ST_INCREASE_PROB_OPP_DISCARDED_ONEAWAY, 0.9);
+            paramList[i].set(ParamList.ST_INCREASE_PROB_OPP_DISCARDED_TWOAWAY, 0.376);
+            paramList[i].set(ParamList.ST_INCREASE_PROB_OPP_DISCARDED_SAMERANK, 0.9);
+        }
+        
+
+
+        Tournament t = new Tournament(paramList);
+        t.playGame();      
+        System.out.println(t);
+    }
+    public static void main(String[] args) throws Exception{
+        testTournament();
+    }
+}

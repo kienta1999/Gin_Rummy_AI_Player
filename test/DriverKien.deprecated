@@ -1,0 +1,54 @@
+package test;
+//import knock.KnockTrackingPlayer;
+import players.OurSimpleGinRummyPlayer;
+class DriverKien{
+    public static void main(String[] args){
+        
+    }
+}
+
+
+
+
+
+
+// import java.util.*;
+
+// import given.Card;
+// import players.RuleBasedPlayer;
+
+// public class DriverKien {
+//     /**
+//      * This is Kien's Driver file to test on my new methods added 
+//      * (getCardTriangles and getHighCardWithPotentialBecomeMeld) 
+//      * 
+//     */
+//     public static Card[] initiateHand(){
+//         Scanner scan = new Scanner(System.in);
+//         Card[] cards = new Card[10];
+//         System.out.println("Please enter your cards");
+//         for(int i = 0; i < 10; i++){
+//             cards[i] = Card.getCard(Card.strIdMap.get(scan.next()));
+//         }
+//         scan.close();
+//         return cards;
+//     }
+//     public static void main (String[] args){
+//         RuleBasedPlayer player = new RuleBasedPlayer();
+        
+//         Card[] cards = initiateHand();
+//         // AC AH 2C 3S 4S 6D 7C 9D TC TH 
+//         // AC AH 2C 3S 7C 7H 7S 7D 8D 6C
+//         player.startGame(1, 1, cards);
+
+//         player.reportDraw(1, Card.getCard(0, 0));
+//         player.reportDiscard(1, Card.getCard(0, 0));
+//         //draw a card and discard it immediately so drawnCard has value (instead of null) and getDiscard will not have null pointer exception
+
+//         System.out.println("All the cards in hand: " + Arrays.toString(cards));
+//         System.out.println("All the cards that are already in meld: " + player.getcardsInMeld());
+//         System.out.println("All the cards in triangle: " + player.getCardTriangles());
+//         System.out.println("All the high cards with potential to become meld: " + player.getHighCardWithPotentialBecomeMeld());
+//         System.out.println("The discarded card is: " + player.getDiscard());
+//     }
+// }

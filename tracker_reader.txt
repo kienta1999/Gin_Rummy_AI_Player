@@ -1,0 +1,5 @@
+Player 0 is dealt [2C, TC, JH, 4D, AD, 7S, 5D, 6S, AS, TD].
+Player 1 is dealt [4H, 5H, QC, KS, TS, 5C, 9D, JS, 6H, 3C].
+Player 0 starts.
+The initial face up card is AH.
+Player 0 draws AH.

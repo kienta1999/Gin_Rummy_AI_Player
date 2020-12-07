@@ -1,0 +1,519 @@
+package players.handeval;
+import given.Card;
+import given.GinRummyUtil;
+import given.GinRummyGame;
+//import games.TestingGame;
+import games.GATestingGame;
+import given.GinRummyPlayer;
+import players.OurSimpleGinRummyPlayer;
+import players.FakePlayer;
+import players.SimpleFakeGinRummyPlayer;
+import players.StateTracker;
+import util.OurUtil;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+
+/**
+ * This class implements choose10From11 to use the original holdOntoScore - 
+ * considering just a pointIndex and an evalIndex.
+ * 
+ * @author Steven Bogaerts
+ */
+
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+// DEPRECATED - DO NOT USE. Use an IndexEnsembleHandEvalPlayer instead.
+
+public class HOSHandEvalPlayer extends AbstractHandEvalPlayer {
+
+    protected static final boolean TESTING = false;
+    protected static final boolean HOLDTESTING = false;
+
+    protected double evalWeight;
+    protected double pointWeight;
+
+    protected HandEvaluator handEval;
+    
+    public void setHandEvaluator(HandEvaluator he) {
+        this.handEval = he;
+    }
+
+    /**
+     * Uses default evalWeight and pointWeight values of 0.7 and 0.3, respectively.
+     */
+    public HOSHandEvalPlayer() {
+        this(0.7, 0.3);
+    }
+
+    public HOSHandEvalPlayer(double evalWeight, double pointWeight) {
+        this.evalWeight = evalWeight;
+        this.pointWeight = pointWeight;
+    }
+
+    public void setEvalWeight(double evalWeight) {
+        this.evalWeight = evalWeight;
+    }
+
+    public void setPointWeight(double pointWeight) {
+        this.pointWeight = pointWeight;
+    }
+
+    /**
+     * From a hand of 11 cards, returns the card that should be discarded to leave
+     * the 10 cards that make the best hand, according to the HandEvaluator and holdOntoScore.
+     * @return the Card we don't want out of the 11
+     */
+    @Override
+    protected Card choose10From11Cards(ArrayList<Card> handOf11) {
+        //if (TESTING) System.out.println("-------------------------------\nchoose10From11Cards begins");
+
+        HashMap<Card, Integer> cardToEvalIndex = getCardToEvalIndexMap(handOf11);
+        HashMap<Card, Integer> cardToPointIndex = getCardToPointIndexMap(handOf11);
+        Card discardChoice = getCardWithLowestHoldOntoScore(cardToEvalIndex, cardToPointIndex);
+
+        return discardChoice;
+    }
+
+    // VERIFIED 6/9
+    /**
+     * @return The card with the lowest holdOntoScore, for the given evalIndex and pointIndex structures.
+     */
+    protected Card getCardWithLowestHoldOntoScore(HashMap<Card, Integer> cardToEvalIndex, HashMap<Card, Integer> cardToPointIndex) {
+        Card minCard = null;
+        double minHoldOntoScore = 999999;
+        for(Map.Entry<Card, Integer> evalEntry : cardToEvalIndex.entrySet()) {
+            Card currCard = evalEntry.getKey();
+            int currEvalIndex = evalEntry.getValue();
+            int currPointIndex = cardToPointIndex.get(currCard);
+
+            double currHoldOntoScore = evalWeight * currEvalIndex + pointWeight * currPointIndex;
+
+            if (HOLDTESTING) System.out.println(currCard + ": evalIndex " + currEvalIndex + ", pointIndex " + currPointIndex + ", score: " + currHoldOntoScore);
+
+            if (currHoldOntoScore < minHoldOntoScore) {
+                minHoldOntoScore = currHoldOntoScore;
+                minCard = currCard;
+            }
+        }
+
+        return minCard;
+    }
+
+    // VERIFIED 6/9
+    /**
+     * Computes a map from card to index ordered by evalHand(the hand resulting from leaving that card out).
+     * 
+     * Also accounts for ties by assigning the same rank to tied cards,
+     * and then skipping subsequent ranks for the next card.
+     * 
+     * @param handOf11 A list of 11 cards under consideration
+     * @return A map from Card to evalIndex value
+     */
+    protected HashMap<Card, Integer> getCardToEvalIndexMap(ArrayList<Card> handOf11) {
+        double[] allEvalValues = new double[11];
+        HashMap<Card, Double> unsortedCardToEval = new HashMap<Card, Double>(handOf11.size());
+        for(int i = 0; i < allEvalValues.length; i++){
+            ArrayList<Card> handOf10 = new ArrayList<Card>(handOf11);
+            Card cardToDrop = handOf11.get(i);
+            handOf10.remove(cardToDrop);
+            unsortedCardToEval.put(cardToDrop, handEval.evalHand(handOf10, this.myTracker));
+        }
+
+        LinkedHashMap<Card, Double> sortedCardToEval = new LinkedHashMap<Card, Double>(unsortedCardToEval.size());
+        unsortedCardToEval.entrySet().stream()
+                                    .sorted(Map.Entry.comparingByValue(java.util.Comparator.reverseOrder()))
+                                    .forEachOrdered(x -> sortedCardToEval.put(x.getKey(), x.getValue()));
+
+        if (TESTING) System.out.println("sortedCardToEval: " + sortedCardToEval);
+
+        // Add the cards in sorted order, while watching for ties (in eval score)
+        HashMap<Card, Integer> cardToEvalIndex = new HashMap<Card, Integer>(handOf11.size());
+        double previousEval = -1; // dummy initial value
+        int rankInList = -1; // will be incremented first time in loop
+        int tieCount = 0;
+        for(Map.Entry<Card, Double> entry : sortedCardToEval.entrySet()) {
+            Card currCard = entry.getKey();
+            double currEval = entry.getValue();
+
+            if (currEval != previousEval) { // no tie this time
+                rankInList += tieCount + 1; // Advance at least 1, plus the length of the previous sequence of ties
+                tieCount = 0; // reset the tie count
+            }
+            else // there's a tie, so rank stays the same
+                tieCount++;
+
+            cardToEvalIndex.put(currCard, rankInList);
+            previousEval = currEval; // track this value, to check for a tie with the next card
+        }
+
+        return cardToEvalIndex;
+    }
+
+    // VERIFIED 6/9
+    /**
+     * Computes a map from card to pointIndex.
+     * 
+     * Also accounts for ties by assigning the same rank to tied cards,
+     * and then skipping subsequent ranks for the next card.
+     * 
+     * @param handOf11 A list of 11 cards under consideration
+     * @return A map from Card to pointIndex value
+     */
+    protected HashMap<Card, Integer> getCardToPointIndexMap(ArrayList<Card> handOf11) {
+        ArrayList<Card>[] meldedUnmelded = OurUtil.getMeldedAndUnmeldedCards(handOf11);
+        ArrayList<Card> meldedCards = meldedUnmelded[0];
+        ArrayList<Card> unmeldedCards = meldedUnmelded[1];
+
+        if (TESTING) System.out.println("melded cards: " + meldedCards + "\nunmelded cards: " + unmeldedCards);
+
+        // Get the deadwood point value for each unmelded card (this ArrayList is parallel to unmeldedCards)
+        ArrayList<Integer> unmeldedPoints = new ArrayList<Integer>(unmeldedCards.size());
+        for(int unmeldedID = 0; unmeldedID < unmeldedCards.size(); unmeldedID++)
+            unmeldedPoints.add(GinRummyUtil.getDeadwoodPoints(unmeldedCards.get(unmeldedID)));
+
+        if (TESTING) System.out.println("unmeldedPoints: " + unmeldedPoints);
+
+        // Make an unsorted map from (unmelded) card to deadwood points
+        HashMap<Card, Integer> unsortedCardToDeadwoodPoints = new HashMap<Card, Integer>(unmeldedCards.size());
+        for(int cardID = 0; cardID < unmeldedCards.size(); cardID++)
+            unsortedCardToDeadwoodPoints.put(unmeldedCards.get(cardID), unmeldedPoints.get(cardID));
+
+        // Sort by deadwood point values (https://howtodoinjava.com/sort/java-sort-map-by-values/)
+        LinkedHashMap<Card, Integer> sortedCardToDeadwoodPoints = new LinkedHashMap<Card, Integer>(unsortedCardToDeadwoodPoints.size());
+        unsortedCardToDeadwoodPoints.entrySet().stream()
+                                    .sorted(Map.Entry.comparingByValue(java.util.Comparator.reverseOrder()))
+                                    .forEachOrdered(x -> sortedCardToDeadwoodPoints.put(x.getKey(), x.getValue()));
+
+        if (TESTING) System.out.println("unmelded, sorted by deadwood points: " + sortedCardToDeadwoodPoints);
+
+        // Add the unmelded cards in sorted order, while watching for ties (in deadwood points)
+        HashMap<Card, Integer> cardToPointIndex = new HashMap<Card, Integer>(handOf11.size());
+        int previousDeadwood = -1; // dummy initial value
+        int rankInList = -1; // will be incremented first time in loop
+        int tieCount = 0;
+        for(Map.Entry<Card, Integer> entry : sortedCardToDeadwoodPoints.entrySet()) {
+            Card currCard = entry.getKey();
+            int currDeadwood = entry.getValue();
+
+            if (currDeadwood != previousDeadwood) { // no tie this time
+                rankInList += tieCount + 1; // Advance at least 1, plus the length of the previous sequence of ties
+                tieCount = 0; // reset the tie count
+            }
+            else // there's a tie, so rank stays the same
+                tieCount++;
+
+            cardToPointIndex.put(currCard, rankInList);
+            previousDeadwood = currDeadwood; // track this value, to check for a tie with the next card
+        }
+
+        // Add the melded cards with pointIndex value of 1000
+        for(Card c : meldedCards)
+            cardToPointIndex.put(c, 1000);
+
+        return cardToPointIndex;
+    }
+
+    public static void testGetCardToPointIndexMap() {
+        System.out.println("=============== testGetCardToPointIndexMap ===============");
+
+        HOSHandEvalPlayer p0 = new HOSHandEvalPlayer();
+        System.out.println("Using ConvHandEvaluator");
+        p0.setHandEvaluator(new ConvHandEvaluator(1, 1, 1));
+        ArrayList<Card> hand;
+        HashMap<Card, Integer> cardToPointIndex;
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2D", "3D", "4D", "6C", "6D", "6H", "5C", "JH", "JD", "QD"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToPointIndex = p0.getCardToPointIndexMap(hand);
+        System.out.println("cardToPointIndex: " + cardToPointIndex);
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2D", "3D", "4D", "6C", "6D", "6H", "5C", "4H", "JH", "6S"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToPointIndex = p0.getCardToPointIndexMap(hand);
+        System.out.println("cardToPointIndex: " + cardToPointIndex);
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2D", "3D", "4D", "6C", "6D", "6H", "6S", "JC", "JD", "JH"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToPointIndex = p0.getCardToPointIndexMap(hand);
+        System.out.println("cardToPointIndex: " + cardToPointIndex);
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2S", "3D", "4S", "TS", "JD", "QS", "KD", "9D", "9S", "8H"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToPointIndex = p0.getCardToPointIndexMap(hand);
+        System.out.println("cardToPointIndex: " + cardToPointIndex);
+
+        /*
+        =============== testGetCardToPointIndexMap ===============
+        --------------------------
+        Full hand (11 cards): [AD, 2D, 3D, 4D, 6C, 6D, 6H, 5C, JH, JD, QD]
+        Melds: [[AD, 2D, 3D, 4D], [6C, 6H, 6D]]
+        melded cards: [AD, 2D, 3D, 4D, 6C, 6H, 6D]
+        unmelded cards: [5C, JH, JD, QD]
+        unmeldedPoints: [5, 10, 10, 10]
+        unmelded, sorted by deadwood points: {JD=10, QD=10, JH=10, 5C=5}
+        unmelded, sorted by deadwood points: {JD=10, QD=10, JH=10, 5C=5}
+        cardToPointIndex: {3D=1000, JD=0, QD=0, 4D=1000, 6C=1000, 2D=1000, AD=1000, 6H=1000, 5C=3, 6D=1000, JH=0}
+        --------------------------
+        Full hand (11 cards): [AD, 2D, 3D, 4D, 6C, 6D, 6H, 5C, 4H, JH, 6S]
+        Melds: [[AD, 2D, 3D, 4D], [6C, 6H, 6S, 6D]]
+        melded cards: [AD, 2D, 3D, 4D, 6C, 6H, 6S, 6D]
+        unmelded cards: [5C, 4H, JH]
+        unmeldedPoints: [5, 4, 10]
+        unmelded, sorted by deadwood points: {JH=10, 5C=5, 4H=4}
+        cardToPointIndex: {3D=1000, 4H=2, 4D=1000, 6C=1000, 2D=1000, 6S=1000, AD=1000, 6H=1000, 5C=1, 6D=1000, JH=0}
+        --------------------------
+        Full hand (11 cards): [AD, 2D, 3D, 4D, 6C, 6D, 6H, 6S, JC, JD, JH]
+        Melds: [[JC, JH, JD], [AD, 2D, 3D, 4D], [6C, 6H, 6S, 6D]]
+        melded cards: [JC, JH, JD, AD, 2D, 3D, 4D, 6C, 6H, 6S, 6D]
+        unmelded cards: []
+        unmeldedPoints: []
+        unmelded, sorted by deadwood points: {}
+        cardToPointIndex: {3D=1000, JD=1000, 4D=1000, 6C=1000, 2D=1000, 6S=1000, AD=1000, 6H=1000, JC=1000, 6D=1000, JH=1000}
+        --------------------------
+        Full hand (11 cards): [AD, 2S, 3D, 4S, TS, JD, QS, KD, 9D, 9S, 8H]
+        melded cards: []
+        unmelded cards: [AD, 2S, 3D, 4S, TS, JD, QS, KD, 9D, 9S, 8H]
+        unmeldedPoints: [1, 2, 3, 4, 10, 10, 10, 10, 9, 9, 8]
+        unmelded, sorted by deadwood points: {TS=10, JD=10, QS=10, KD=10, 9D=9, 9S=9, 8H=8, 4S=4, 3D=3, 2S=2, AD=1}
+        cardToPointIndex: {9D=4, TS=0, 3D=8, JD=0, 8H=6, QS=0, 9S=4, AD=10, 4S=7, KD=0, 2S=9}
+        */
+    }
+
+    public static void testGetCardToEvalIndexMap() {
+        System.out.println("=============== testGetCardToEvalIndexMap ===============");
+
+        HOSHandEvalPlayer p0 = new HOSHandEvalPlayer();
+        System.out.println("Using ConvHandEvaluator");
+        p0.setHandEvaluator(new ConvHandEvaluator(1, 1, 1));
+        ArrayList<Card> hand;
+        HashMap<Card, Integer> cardToEvalIndex;
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2D", "3D", "4D", "6C", "6D", "6H", "5C", "JH", "JD", "QD"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToEvalIndex = p0.getCardToEvalIndexMap(hand);
+        System.out.println("cardToEvalIndex: " + cardToEvalIndex);
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2D", "3D", "4D", "6C", "6D", "6H", "5C", "4H", "JH", "6S"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToEvalIndex = p0.getCardToEvalIndexMap(hand);
+        System.out.println("cardToEvalIndex: " + cardToEvalIndex);
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2D", "3D", "4D", "6C", "6D", "6H", "6S", "JC", "JD", "JH"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToEvalIndex = p0.getCardToEvalIndexMap(hand);
+        System.out.println("cardToEvalIndex: " + cardToEvalIndex);
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2S", "3D", "4S", "TS", "JD", "QS", "KD", "9D", "9S", "8H"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToEvalIndex = p0.getCardToEvalIndexMap(hand);
+        System.out.println("cardToEvalIndex: " + cardToEvalIndex);
+
+        /*
+        =============== testGetCardToEvalIndexMap ===============
+        Using ConvHandEvaluator
+        --------------------------
+        Full hand (11 cards): [AD, 2D, 3D, 4D, 6C, 6D, 6H, 5C, JH, JD, QD]
+        cardToEvalIndex: {3D=6, JH=0, 6C=6, 2D=6, 4D=6, 6H=3, JD=3, 5C=0, AD=3, 6D=6, QD=0}
+        --------------------------
+        Full hand (11 cards): [AD, 2D, 3D, 4D, 6C, 6D, 6H, 5C, 4H, JH, 6S]
+        cardToEvalIndex: {3D=4, JH=0, 6C=7, 2D=4, 4H=2, 6S=4, 4D=7, 6H=7, 5C=1, AD=2, 6D=7}
+        --------------------------
+        Full hand (11 cards): [AD, 2D, 3D, 4D, 6C, 6D, 6H, 6S, JC, JD, JH]
+        cardToEvalIndex: {3D=4, JH=0, 6C=4, JC=0, 2D=4, 4D=4, 6S=4, JD=0, 6H=4, AD=0, 6D=10}
+        --------------------------
+        Full hand (11 cards): [AD, 2S, 3D, 4S, TS, JD, QS, KD, 9D, 9S, 8H]
+        cardToEvalIndex: {9S=7, 3D=1, KD=1, 4S=1, 2S=1, 9D=7, QS=1, JD=7, 8H=0, TS=7, AD=1}
+        */
+    }
+
+    public static void testGetCardWithLowestHoldOntoScore() {
+        System.out.println("=============== testGetCardWithLowestHoldOntoScore ===============");
+
+        HOSHandEvalPlayer p0 = new HOSHandEvalPlayer();
+        System.out.println("Using ConvHandEvaluator");
+        p0.setHandEvaluator(new ConvHandEvaluator(1, 1, 1));
+        ArrayList<Card> hand;
+        Card c;
+        HashMap<Card, Integer> cardToEvalIndex;
+        HashMap<Card, Integer> cardToPointIndex;
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2D", "3D", "4D", "6C", "6D", "6H", "5C", "JH", "JD", "QD"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToEvalIndex = p0.getCardToEvalIndexMap(hand);
+        cardToPointIndex = p0.getCardToPointIndexMap(hand);
+        c = p0.getCardWithLowestHoldOntoScore(cardToEvalIndex, cardToPointIndex);
+        System.out.println("lowest holdOntoScore card: " + c);
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2D", "3D", "4D", "6C", "6D", "6H", "5C", "4H", "JH", "6S"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToEvalIndex = p0.getCardToEvalIndexMap(hand);
+        cardToPointIndex = p0.getCardToPointIndexMap(hand);
+        c = p0.getCardWithLowestHoldOntoScore(cardToEvalIndex, cardToPointIndex);
+        System.out.println("lowest holdOntoScore card: " + c);
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2D", "3D", "4D", "6C", "6D", "6H", "6S", "JC", "JD", "JH"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToEvalIndex = p0.getCardToEvalIndexMap(hand);
+        cardToPointIndex = p0.getCardToPointIndexMap(hand);
+        c = p0.getCardWithLowestHoldOntoScore(cardToEvalIndex, cardToPointIndex);
+        System.out.println("lowest holdOntoScore card: " + c);
+
+        System.out.println("--------------------------");
+        hand = OurUtil.makeHand(new String[]{"AD", "2S", "3D", "4S", "TS", "JD", "QS", "KD", "9D", "9S", "8H"});
+        System.out.println("Full hand (11 cards): " + hand);
+        cardToEvalIndex = p0.getCardToEvalIndexMap(hand);
+        cardToPointIndex = p0.getCardToPointIndexMap(hand);
+        c = p0.getCardWithLowestHoldOntoScore(cardToEvalIndex, cardToPointIndex);
+        System.out.println("lowest holdOntoScore card: " + c);
+    }
+
+    /**
+     * This method is mapped to the stream elements.
+     * 
+     * @return Win percentage
+     */
+    private static double testWeight(double currWeight, double numGames) {
+        HOSHandEvalPlayer p0 = new HOSHandEvalPlayer();
+        p0.setEvalWeight(currWeight);
+        p0.setPointWeight(1-currWeight);
+        p0.setHandEvaluator(new MeldabilityHandEvaluator());
+        GinRummyPlayer p1 = new OurSimpleGinRummyPlayer();
+        GinRummyGame game = new GinRummyGame(p0, p1);
+
+        int currHosWins = 0;
+        p0.setEvalWeight(currWeight);
+        p0.setPointWeight(1-currWeight);
+        for(int gameID = 0; gameID < numGames; gameID++) {
+            int winner = game.play();
+            if (winner == 0)
+                currHosWins++;
+        }
+        System.out.println(currWeight + ": " + currHosWins / numGames);
+        
+        return currHosWins / numGames;
+    }
+
+    public static void tryManyWeightsWithStreams() {
+        int numTests = 51;
+        double stepSize = 1.0 / (numTests-1);
+
+        double[] winPercentages;
+        double start, elapsed;
+
+        // Time it sequentially
+        /*
+        start = System.currentTimeMillis();
+        winPercentages = java.util.stream.DoubleStream.iterate(0, i -> i + stepSize)
+                                                      .limit(numTests)
+                                                      .map(w -> testWeight(w, 1000))
+                                                      .toArray();
+        elapsed = System.currentTimeMillis() - start;
+        System.out.println("Elapsed time sequentially: " + elapsed);
+        */
+
+        // Time it in parallel
+        start = System.currentTimeMillis();
+        winPercentages = java.util.stream.DoubleStream.iterate(0, i -> i + stepSize)
+                                                      .limit(numTests)
+                                                      .parallel()
+                                                      .map(w -> testWeight(w, 1000))
+                                                      .toArray();
+        // the arbitrary ordering of execution (above) does not harm the ordering in the resulting array                                                               
+        elapsed = System.currentTimeMillis() - start;
+        System.out.println("Elapsed time in parallel: " + elapsed);
+
+        System.out.println("In order of weight, the winPercentages are:\n" + java.util.Arrays.toString(winPercentages));
+
+        double max = -1;
+        int maxID = -1;
+        for (int i = 0; i < winPercentages.length; i++) {
+            if (winPercentages[i] > max) {
+                max = winPercentages[i];
+                maxID = i;
+            }
+        }
+        System.out.println("Maximum is: " + max + " for id " + maxID + ", which is weight " + (maxID*0.02));
+    }
+
+    public static void tryManyWeightsWithLoops() {
+        double start, elapsed;
+        start = System.currentTimeMillis();
+
+        HOSHandEvalPlayer p0 = new HOSHandEvalPlayer();
+        p0.setHandEvaluator(new MeldabilityHandEvaluator());
+        GinRummyPlayer p1 = new OurSimpleGinRummyPlayer();
+        GinRummyGame game = new GinRummyGame(p0, p1);
+
+        int numGames = 1000;
+        int currHosWins;
+        int maxWins = -1;
+        double maxWinsWeight = 0.0;
+
+        for(double currWeight = 0.0; currWeight < 1.0; currWeight+=0.02) {
+            currHosWins = 0;
+            p0.setEvalWeight(currWeight);
+            p0.setPointWeight(1-currWeight);
+            for(int gameID = 0; gameID < numGames; gameID++) {
+                int winner = game.play();
+                if (winner == 0)
+                    currHosWins++;
+            }
+            System.out.println(currWeight + ": " + currHosWins);
+            if (currHosWins > maxWins) {
+                maxWins = currHosWins;
+                maxWinsWeight = currWeight;
+            }
+        }
+
+        elapsed = System.currentTimeMillis() - start;
+        System.out.println("Elapsed time in parallel: " + elapsed);
+
+        System.out.println("Max wins: " + maxWins + ", best eval weight: " + maxWinsWeight + ", best point weight: " + (1-maxWinsWeight));
+    }
+
+    public static void main(String[] args) {
+        // testGetCardToPointIndexMap();
+        // testGetCardToEvalIndexMap();
+        // testGetCardWithLowestHoldOntoScore();
+
+        //tryManyWeightsWithLoops();
+        tryManyWeightsWithStreams();
+    }
+
+}

@@ -1,0 +1,476 @@
+package players.handeval;
+
+import ginrummy.Card;
+import java.util.ArrayList;
+import players.FakePlayer;
+import players.SimpleFakeGinRummyPlayer;
+//import games.GATestingGame;
+import games.TestingGame;
+import util.OurUtil;
+//import given.GinRummyGame;
+import ginrummy.GinRummyPlayer;
+import players.OurSimpleGinRummyPlayer;
+import players.ParamList;
+
+/**
+ * This class implements choose10From11Cards to use a single HandEvaluator.
+ * The result is that the inherited getDiscard method will return the card leading to
+ * the best remaining 10 cards hand.
+ */
+public class SingleHandEvalPlayer extends AbstractHandEvalPlayer {
+
+    protected static final boolean TESTING = false;
+
+    protected HandEvaluator handEval;
+
+    public SingleHandEvalPlayer(ParamList params){
+        this(null, params);
+    }
+
+    public SingleHandEvalPlayer(HandEvaluator he, ParamList params) {
+        super(params);
+        setHandEvaluator(he);
+    }
+
+    public void setHandEvaluator(HandEvaluator he) {
+        this.handEval = he;
+    }
+
+    /*
+    @Override
+	public Card getDiscard() {
+        Card card = choose10From11Cards(cards);
+        /*
+        if(card == drawnCard && drawnCard == faceUpCard){
+            System.out.println("---------- second largest card is discarded to avoid to forfeit ---------");
+            card = choose10From11CardsSecondLargest(cards);
+            return card;
+        }
+        
+        return card;
+    }
+    */
+
+    // VERIFIED 6/4
+    /**
+     * From a hand of 11 cards, returns the card that should be discarded to leave
+     * the 10 cards that make the best hand, according to the HandEvaluator.
+     * @return the Card we don't want out of the 11
+     */ /*
+    @Override
+    protected Card choose10From11Cards(ArrayList<Card> handOf11) {
+        System.out.println("In SingleHandEvalPLayer's choose10From11Cards");
+        //if (TESTING) System.out.println("-------------------------------\nchoose10From11Cards begins");
+
+        double[] allEvalValues = new double[11];
+        for(int i = 0; i < allEvalValues.length; i++){
+            ArrayList<Card> handOf10 = new ArrayList<Card>(handOf11);
+            // EFFICIENCY FOR LATER: can we avoid copying by just telling evalHand which card to ignore?
+            handOf10.remove(handOf11.get(i));
+            allEvalValues[i] = handEval.evalHand(handOf10, this.myTracker);
+            if (TESTING) System.out.println("---------------\nhand of 10: " + handOf10 + "\neval: " + allEvalValues[i]);
+        }
+        double maxEval = allEvalValues[0];
+        int indexOfCardDiscarded = 0;
+        for(int j = 1; j<11; j++){
+            if(allEvalValues[j]>maxEval){
+                maxEval = allEvalValues[j];
+                indexOfCardDiscarded = j;
+            }       
+        }
+
+        if (TESTING) System.out.println("maxEval: " + maxEval + ", indexOfCardDiscarded: " + indexOfCardDiscarded);
+            
+        return handOf11.get(indexOfCardDiscarded);
+        // EFFICIENCY FOR LATER:
+        // is there a way that we can save some of the information we compute here?
+        // At least for the original 10 cards, we don't don't need to call evalHand again each time choose10From11Cards is called.
+        // The other hands are mostly the same too, so is there a way that we can save some of this information?
+    }*/
+
+    /**
+     * From a hand of 11 cards, returns the card that should be discarded to leave
+     * the 10 cards that make the best hand, according to the HandEvaluator.
+     * But checks to make sure we won't choose the hand the corresponds to discarding the faceup card.
+     * @return the Card we don't want out of the 11
+     */
+    @Override
+    protected Card choose10From11Cards(ArrayList<Card> handOf11) {
+        if (TESTING) System.out.println("In SingleHandEvalPLayer's choose10From11Cards - not discarding the faceup card");
+        //if (TESTING) System.out.println("-------------------------------\nchoose10From11Cards begins");
+
+        double[] allEvalValues = new double[11];
+        for(int i = 0; i < allEvalValues.length; i++){
+            ArrayList<Card> handOf10 = new ArrayList<Card>(handOf11);
+            // EFFICIENCY FOR LATER: can we avoid copying by just telling evalHand which card to ignore?
+            handOf10.remove(handOf11.get(i));
+            allEvalValues[i] = handEval.evalHand(handOf10, this.myStateTracker, null);
+            if (TESTING) System.out.println("---------------\nhand of 10: " + handOf10 + "\neval: " + allEvalValues[i]);
+        }
+        double maxEval = allEvalValues[0];
+        int indexOfCardDiscarded = 0;
+        int loopLimit = drewFaceUpCard ? 10 : 11; // if drewFaceUpCard, then don't consider dropping it
+        for(int j = 1; j < loopLimit; j++) {
+            if(allEvalValues[j] > maxEval){
+                maxEval = allEvalValues[j];
+                indexOfCardDiscarded = j;
+            }       
+        }
+
+        if (TESTING) System.out.println("maxEval: " + maxEval + ", indexOfCardDiscarded: " + indexOfCardDiscarded);
+            
+        return handOf11.get(indexOfCardDiscarded);
+        // EFFICIENCY FOR LATER:
+        // is there a way that we can save some of the information we compute here?
+        // At least for the original 10 cards, we don't don't need to call evalHand again each time choose10From11Cards is called.
+        // The other hands are mostly the same too, so is there a way that we can save some of this information?
+    }
+
+
+    /*
+    protected Card choose10From11CardsSecondLargest(ArrayList<Card> handOf11) {
+        //if (TESTING) System.out.println("-------------------------------\nchoose10From11Cards begins");
+
+        double[] allEvalValues = new double[11];
+        for(int i = 0; i < allEvalValues.length; i++){
+            ArrayList<Card> handOf10 = new ArrayList<Card>(handOf11);
+            // EFFICIENCY FOR LATER: can we avoid copying by just telling evalHand which card to ignore?
+            handOf10.remove(handOf11.get(i));
+            allEvalValues[i] = handEval.evalHand(handOf10, this.myTracker);
+            //if (TESTING) System.out.println("---------------\nhand of 10: " + handOf10 + "\neval: " + allEvalValues[i]);
+        }
+        double maxEval = Integer.MIN_VALUE;
+        double secondEval = Integer.MIN_VALUE;
+        int second = Integer.MIN_VALUE;
+        int first = Integer.MIN_VALUE;
+        for(int j = 0; j<11; j++){
+            if(allEvalValues[j] > maxEval){
+                secondEval = maxEval;
+                maxEval = allEvalValues[j];
+                second = first;
+                first = j;
+            }
+            else if(allEvalValues[j] > secondEval){
+                secondEval = allEvalValues[j];
+                second = j;
+            }
+        }
+
+        if (TESTING) System.out.println("maxEval: " + maxEval + ", indexOfCardDiscarded: " + second);
+            
+        return handOf11.get(second);
+        // EFFICIENCY FOR LATER:
+        // is there a way that we can save some of the information we compute here?
+        // At least for the original 10 cards, we don't don't need to call evalHand again each time choose10From11Cards is called.
+        // The other hands are mostly the same too, so is there a way that we can save some of this information?
+    }*/
+
+    /*
+    public static void fullGameTest(){
+        int numGames = 1;
+
+        ParamList params = new ParamList();
+        params.set(ParamList.CH_SAMERANK, 1.5);
+        params.set(ParamList.CH_ONEAWAY, 2.0);
+        params.set(ParamList.CH_TWOAWAY, 1.0);
+        ConvHandEvaluator he = new ConvHandEvaluator(params);
+        
+        GATestingGame.setPlayVerbose(true);
+
+        AbstractHandEvalPlayer p0 = new SingleHandEvalPlayer(he, params);
+        FakePlayer p1 = new SimpleFakeGinRummyPlayer();
+
+        GATestingGame game = new GATestingGame(p0, p1);
+        for(int i = 0; i < numGames; i++) {
+            System.out.println("=============================");
+            System.out.println("=============================");
+            System.out.println("=============================");
+            System.out.println("=============================");
+            int winner = game.play();
+            System.out.println("Game ended, winner: " + winner);
+        }
+    }*/
+
+    public static void initialFaceUpCardTest1(){
+        System.out.println("======================================================================================");
+        System.out.println("======================================================================================");
+        System.out.println("======================================================================================");
+        System.out.println("\n=====================/ Test1: No one draws the face Up Card /=====================\n");
+        ArrayList<Card> selfCards = OurUtil.makeHand(new String[] {"AC", "2C", "3C", "5C", "4C", "5S", "5D", "AH", "2D", "6D"});
+        ArrayList<Card> oppCards = OurUtil.makeHand(new String[] {"2S", "TD", "JD", "QD", "KD", "8C", "8S", "8D", "3S", "3D"});
+
+        Card[] cardsPlayer0 = new Card[10];
+        Card[] cardsPlayer1 = new Card[10];
+
+        ParamList params = new ParamList();
+
+        for(int i = 0; i<10; i++){
+            cardsPlayer0[i] = selfCards.get(i);
+            cardsPlayer1[i] = oppCards.get(i);
+
+        }
+
+        ParamList params1 = new ParamList();
+        params1.set(ParamList.CH_SAMERANK, 1.5);
+        params1.set(ParamList.CH_ONEAWAY, 2.0);
+        params1.set(ParamList.CH_TWOAWAY, 1.0);
+        ConvHandEvaluator he1 = new ConvHandEvaluator(params1);
+
+        ParamList params2 = new ParamList();
+        params2.set(ParamList.CH_SAMERANK, 1.4);
+        params2.set(ParamList.CH_ONEAWAY, 2.06);
+        params2.set(ParamList.CH_TWOAWAY, 1.1);
+        ConvHandEvaluator he2 = new ConvHandEvaluator(params2);
+
+        AbstractHandEvalPlayer p0 = new SingleHandEvalPlayer(he1, params1);
+        p0.setCards(selfCards);
+        p0.setPlayerNum(0);
+
+        AbstractHandEvalPlayer p1 = new SingleHandEvalPlayer(he2, params2);
+        p1.setCards(oppCards);
+        p1.setPlayerNum(1);
+
+        p0.startGame(0, 0, cardsPlayer0);
+        p1.startGame(1, 0, cardsPlayer1); 
+        System.out.println("Player 0 cards are: " + p0.showCards());
+        System.out.println("Player 1 cards are: " + p1.showCards());
+        Card firstFaceUpCard = Card.strCardMap.get("7H"); //no one draws the faceup card
+        Card faceDownDrawnCard = Card.strCardMap.get("6C");
+        System.out.println("\nThe faceUp card is:  " + firstFaceUpCard);
+        System.out.println();
+        System.out.println("=====================willDrawFaceUpCard is called on Player 0=====================");
+        p0.willDrawFaceUpCard(firstFaceUpCard);
+        System.out.println("=====================willDrawFaceUpCard is called on Player 1=====================");
+        p1.willDrawFaceUpCard(firstFaceUpCard);
+        System.out.println("=======================Player 0 is drawing a face-down card=======================\n");
+        System.out.println("Cards: " + p0.showCards());
+        p0.reportDraw(0, faceDownDrawnCard);
+        p1.reportDraw(0, faceDownDrawnCard);              
+        Card discardedByPlayer0 = p0.getDiscard();
+        System.out.println("Player 0's discard: " + discardedByPlayer0);
+        System.out.println();
+        System.out.println("-------------------------Player 0 is reporting Discard-------------------------\n");
+        p0.reportDiscard(0, discardedByPlayer0);
+        p1.reportDiscard(0, discardedByPlayer0);
+        System.out.println();
+    }  
+    
+    public static void initialFaceUpCardTest2(){
+        System.out.println("======================================================================================");
+        System.out.println("======================================================================================");
+        System.out.println("======================================================================================");
+        System.out.println("\n=====================/ Test2: Player 0 draws the face Up Card /=====================\n");
+        ArrayList<Card> selfCards = OurUtil.makeHand(new String[] {"AC", "2C", "3C", "5C", "4C", "5S", "5D", "AH", "2D", "6D"});
+        ArrayList<Card> oppCards = OurUtil.makeHand(new String[] {"2S", "TD", "JD", "QD", "KD", "8C", "8S", "8D", "3S", "3D"});
+
+        Card[] cardsPlayer0 = new Card[10];
+        Card[] cardsPlayer1 = new Card[10];
+
+        ParamList params = new ParamList();
+
+        for(int i = 0; i<10; i++){
+            cardsPlayer0[i] = selfCards.get(i);
+            cardsPlayer1[i] = oppCards.get(i);
+
+        }
+
+        ParamList params1 = new ParamList();
+        params1.set(ParamList.CH_SAMERANK, 1.5);
+        params1.set(ParamList.CH_ONEAWAY, 2.0);
+        params1.set(ParamList.CH_TWOAWAY, 1.0);
+        ConvHandEvaluator he1 = new ConvHandEvaluator(params1);
+
+        ParamList params2 = new ParamList();
+        params2.set(ParamList.CH_SAMERANK, 1.4);
+        params2.set(ParamList.CH_ONEAWAY, 2.06);
+        params2.set(ParamList.CH_TWOAWAY, 1.1);
+        ConvHandEvaluator he2 = new ConvHandEvaluator(params2);
+
+        AbstractHandEvalPlayer p0 = new SingleHandEvalPlayer(he1, params1);
+        p0.setCards(selfCards);
+        p0.setPlayerNum(0);
+
+        AbstractHandEvalPlayer p1 = new SingleHandEvalPlayer(he2, params2);
+        p1.setCards(oppCards);
+        p1.setPlayerNum(1);
+
+        p0.startGame(0, 0, cardsPlayer0);
+        p1.startGame(1, 0, cardsPlayer1); 
+        if(TESTING) System.out.println("Player 0 cards are: " + p0.showCards());
+        if (TESTING) System.out.println("Player 1 cards are: " + p1.showCards());
+        Card firstFaceUpCard = Card.strCardMap.get("6C");
+        Card faceDownDrawnCard = Card.strCardMap.get("7H");
+        System.out.println("\nThe faceUp card is:  " + firstFaceUpCard);
+        System.out.println();
+        System.out.println("=====================willDrawFaceUpCard is called on Player 0=====================");
+        p0.willDrawFaceUpCard(firstFaceUpCard);
+        System.out.println("\n-----------------------ReportDraw is called on Player 0------------------------\n");
+        p0.reportDraw(0, firstFaceUpCard);
+        p1.reportDraw(0, firstFaceUpCard);
+        Card cardDiscardedByPlayer0 = p0.getDiscard();
+        System.out.println("Player 0's discard: " + cardDiscardedByPlayer0);
+        System.out.println();
+        System.out.println("---------------------------Player 0 is reporting Discard-------------------------\n");
+        p0.reportDiscard(0, cardDiscardedByPlayer0);
+        p1.reportDiscard(0, cardDiscardedByPlayer0);
+        System.out.println();
+        System.out.println("Now the face up card is " + cardDiscardedByPlayer0);
+        System.out.println();
+        System.out.println("=====================willDrawFaceUpCard is called on Player 1========================");
+        p1.willDrawFaceUpCard(cardDiscardedByPlayer0);
+        System.out.println("------------------------Player 1 is drawing a face-down card-----------------------\n");
+        System.out.println("Cards: " + p1.showCards());
+        p0.reportDraw(1, faceDownDrawnCard);
+        p1.reportDraw(1, faceDownDrawnCard);
+        Card cardDiscardedbyPlayer1 = p1.getDiscard();
+        System.out.println("Player 1's discard: " + cardDiscardedbyPlayer1);
+        System.out.println();
+        System.out.println("----------------------------Player 1 is reporting Discard---------------------------\n");
+        p0.reportDiscard(1, cardDiscardedbyPlayer1);
+        p1.reportDiscard(1, cardDiscardedbyPlayer1);
+        System.out.println();
+    }
+
+    public static void initialFaceUpCardTest3(){
+        System.out.println("======================================================================================");
+        System.out.println("======================================================================================");
+        System.out.println("======================================================================================");
+        System.out.println("\n=====================/ Test3: Player 1 draws the face Up Card /=====================\n");
+        ArrayList<Card> selfCards = OurUtil.makeHand(new String[] {"AC", "2C", "3C", "5C", "4C", "5S", "5D", "AH", "2D", "4D"});
+        ArrayList<Card> oppCards = OurUtil.makeHand(new String[] {"2S", "TD", "JD", "QD", "KD", "8C", "8S", "8D", "3S", "3D"});
+
+        Card[] cardsPlayer0 = new Card[10];
+        Card[] cardsPlayer1 = new Card[10];
+
+        ParamList params = new ParamList();
+
+        for(int i = 0; i<10; i++){
+            cardsPlayer0[i] = selfCards.get(i);
+            cardsPlayer1[i] = oppCards.get(i);
+
+        }
+
+        ParamList params1 = new ParamList();
+        params1.set(ParamList.CH_SAMERANK, 1.5);
+        params1.set(ParamList.CH_ONEAWAY, 2.0);
+        params1.set(ParamList.CH_TWOAWAY, 1.0);
+        ConvHandEvaluator he1 = new ConvHandEvaluator(params1);
+
+        ParamList params2 = new ParamList();
+        params2.set(ParamList.CH_SAMERANK, 1.4);
+        params2.set(ParamList.CH_ONEAWAY, 2.06);
+        params2.set(ParamList.CH_TWOAWAY, 1.1);
+        ConvHandEvaluator he2 = new ConvHandEvaluator(params2);
+
+        AbstractHandEvalPlayer p0 = new SingleHandEvalPlayer(he1, params1);
+        p0.setCards(selfCards);
+        p0.setPlayerNum(0);
+
+        AbstractHandEvalPlayer p1 = new SingleHandEvalPlayer(he2, params2);
+        p1.setCards(oppCards);
+        p1.setPlayerNum(1);
+
+        p0.startGame(0, 0, cardsPlayer0);
+        p1.startGame(1, 0, cardsPlayer1); 
+        if (TESTING) System.out.println("Player 0 cards are: " + p0.showCards());
+        if (TESTING) System.out.println("Player 1 cards are: " + p1.showCards());
+        Card firstFaceUpCard = Card.strCardMap.get("9D");
+        Card faceDownDrawnCard = Card.strCardMap.get("3D");
+        System.out.println("\nThe faceUp card is:  " + firstFaceUpCard);
+        System.out.println();
+        System.out.println("=====================willDrawFaceUpCard is called on Player 0=====================");
+        p0.willDrawFaceUpCard(firstFaceUpCard);
+        System.out.println("=====================willDrawFaceUpCard is called on Player 1=====================");
+        p1.willDrawFaceUpCard(firstFaceUpCard);
+        System.out.println("\n------------------------ReportDraw is called on Player 1-------------------------\n");
+        p0.reportDraw(1, firstFaceUpCard);
+        p1.reportDraw(1, firstFaceUpCard);
+        Card cardDiscardedbyPlayer1 = p1.getDiscard();
+        System.out.println("\nPlayer 1's discard: " + cardDiscardedbyPlayer1);
+        System.out.println();
+        System.out.println("----------------------------Player 1 is reporting Discard---------------------------\n");   
+        p0.reportDiscard(1, cardDiscardedbyPlayer1);
+        p1.reportDiscard(1, cardDiscardedbyPlayer1);
+        System.out.println ("\n Now, the faceUp card is: " + cardDiscardedbyPlayer1);
+        System.out.println();
+        System.out.println("=====================willDrawFaceUpCard is called on Player 0========================");
+        p0.willDrawFaceUpCard(cardDiscardedbyPlayer1);
+        System.out.println("\n------------------------ReportDraw is called on Player 0-------------------------\n");
+        p0.reportDraw(0, cardDiscardedbyPlayer1);
+        p1.reportDraw(0, cardDiscardedbyPlayer1);
+        Card p0Discard = p0.getDiscard();
+        System.out.println("\nPlayer 0's discard: " + p0Discard);
+        System.out.println();
+        System.out.println("----------------------------Player 0 is reporting Discard---------------------------\n");
+        p0.reportDiscard(0, p0Discard);
+        p1.reportDiscard(0, p0Discard);
+        System.out.println();
+    }
+
+    /* This is to check the performance of the plain HandEvalPlayer with 
+       a MeldabilityHandEvaluator.
+    */
+    public static void manyGamesPerformanceChecker(HandEvaluator he) {
+        ParamList params = new ParamList();
+        AbstractHandEvalPlayer p0 = new SingleHandEvalPlayer(he, params);
+        GinRummyPlayer p1 = new OurSimpleGinRummyPlayer();
+        TestingGame game = new TestingGame(p0, p1);
+        game.setPlayVerbose(true);
+        int numGames = 100;
+        int numWins = 0;
+        for(int gameID = 0; gameID < numGames; gameID++) {
+            int winner = game.play();
+            if (winner == 0)
+                numWins++;
+        }
+        System.out.println("Win percentage : " + ((double) numWins) / numGames);
+    }
+
+    /* This is to check if the plain HandEvalPlayer with 
+       a MeldabilityHandEvaluator does any bad actions.
+    */
+    public static void manyGamesBadActionChecker() {
+        ParamList params = new ParamList();
+        System.out.println("MeldabilityHandEvaluator");
+        HandEvaluator he = new MeldabilityHandEvaluator(params);
+        AbstractHandEvalPlayer p0 = new SingleHandEvalPlayer(he, params);
+        //AbstractHandEvalPlayer p0 = new TieBreakingHandEvalPlayer(he, params);
+        GinRummyPlayer p1 = new OurSimpleGinRummyPlayer();
+        TestingGame game = new TestingGame(p0, p1);
+
+        int numGames = 100;
+        int numWins = 0;
+        for(int gameID = 0; gameID < numGames; gameID++) {
+            int winner = game.play();
+            if (winner == 0)
+                numWins++;
+        }
+        System.out.println("Win percentage : " + ((double) numWins) / numGames);
+    }
+
+    public static void main(String[] args){
+        // initialFaceUpCardTest1();       
+        // initialFaceUpCardTest2();       
+        // initialFaceUpCardTest3();
+        // fullGameTest();   
+
+        //manyGamesPerformanceChecker(new MeldabilityHandEvaluator(params));
+        manyGamesBadActionChecker();
+
+        // ConvHandEvaluator he;
+
+        // System.out.println("ConvHandEvaluator(1, 1, 1)");
+        // he = new ConvHandEvaluator(params);
+        // params.set(ParamList.CH_SAMERANK, 1);
+        // params.set(ParamList.CH_ONEAWAY, 1);
+        // params.set(ParamList.CH_TWOAWAY, 1);
+        // manyGamesPerformanceChecker(he);
+
+        // System.out.println("ConvHandEvaluator(1.5, 2, 1)");
+        // params.set(ParamList.CH_SAMERANK, 1.5);
+        // params.set(ParamList.CH_ONEAWAY, 2);
+        // params.set(ParamList.CH_TWOAWAY, 1);
+        // manyGamesPerformanceChecker(he);
+    }    
+
+}

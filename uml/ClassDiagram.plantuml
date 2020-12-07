@@ -1,0 +1,66 @@
+@startuml Summer 2020 Research
+
+skinparam package {
+  BackgroundColor #EEEEEE
+}
+
+skinparam class {
+  BackgroundColor #E5FFEA
+  BackgroundColor<<interface>> #EDDEFF
+}
+
+class ga.GATuner
+
+class games.BadActionException extends java.lang.RuntimeException
+class games.GameSimulator
+class games.TestGame
+class games.TestingGame
+class games.Tournament
+
+class ginrummy.Card
+class ginrummy.GinRummyGame
+interface ginrummy.GinRummyPlayer<<interface>>
+class ginrummy.GinRummyUtil
+class ginrummy.SimpleGinRummyPlayer implements ginrummy.GinRummyPlayer 
+
+class knock.DataInstance 
+class knock.KnockTrackingPlayer extends ginrummy.SimpleFakeGinRummyPlayer 
+class knock.PrepareData
+interface knock.ScorePredictor<<interface>>
+class knock.TestTensorFlow
+class knock.TestWeka 
+
+class players.handeval.AbstractHandEvalPlayer extends players.KnockOnGinPlayer 
+class players.handeval.AceTwoBonusHandEvaluator implements players.handeval.HandEvaluator 
+class players.handeval.ConvHandEvaluator implements players.handeval.HandEvaluator 
+class players.handeval.DeadwoodHandEvaluator implements players.HandEvaluator
+class players.handeval.EnsembleHandEvalPlayer extends players.handeval.AbstractHandEvalPlayer  
+interface players.handeval.HandEvaluator<<interface>>
+class players.handeval.IndexEnsembleHandEvalPlayer extends players.handeval.EnsembleHandEvalPlayer
+interface players.handeval.KnockDecider<<interface>>
+class players.handeval.LinearDeadwoodPenaltyHandEvaluator implements players.handeval.HandEvaluator
+class players.handeval.MeldabilityHandEvaluator implements players.handeval.HandEvaluator 
+class players.handeval.MultiOppHandMeldabilityEvaluator implements players.handeval.HandEvaluator
+class players.handeval.OneStageKnockDecider implements players.handeval.KnockDecider
+class players.handeval.OppCardsKnownDeadwoodPenaltyHandEvaluator implements players.handeval.HandEvaluator
+class players.handeval.SingleHandEvalPlayer extends players.handeval.AbstractHandEvalPlayer 
+class players.handeval.TwoStageKnockDecider implements players.handeval.KnockDecider
+
+class players.BadActionPlayer extends players.OurSimpleGinRummyPlayer 
+class players.DoublePlayer extends players.SimpleFakeGinRummyPlayer
+class players.DoublePlayerDisplay 
+interface players.FakePlayer extends ginrummy.GinRummyPlayer
+class players.KnockOnGinPlayer extends players.SimpleFakeGinRummyPlayer 
+class players.MeldabilityCalculator 
+class players.OurSimpleGinRummyPlayer implements ginrummy.GinRummyPlayer 
+class players.ParamList implements java.io.Serializable 
+class players.PerformanceTracker 
+class players.ScorePrediction 
+class players.SimpleFakeGinRummyPlayer extends players.OurSimpleGinRummyPlayer implements players.FakePlayer 
+class players.StateTracker implements java.io.Serializable 
+class players.StateTrackerPlayer extends players.OurSimpleGinRummyPlayer 
+class players.YourPlayer extends players.OurSimpleGinRummyPlayer 
+
+class OurUtil 
+
+@enduml

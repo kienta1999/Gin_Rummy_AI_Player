@@ -1,0 +1,286 @@
+package knock;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+
+import ginrummy.Card;
+import players.FakePlayer;
+import games.TestingGame;
+import ginrummy.GinRummyUtil;
+import players.KnockOnGinPlayer;
+import util.OurUtil;
+import players.SimpleFakeGinRummyPlayer;
+import players.StateTracker;
+import players.ParamList;
+import players.ScorePrediction;
+
+/**
+ * This player is the same as OurSimpleGinRummyPlayer, except that it cheats.
+ * The constructor requires the opponent player to be passed in,
+ * so that this player can look at the cards of the opponent player.
+ * This is done so that data about knocking can be gathered.
+ * 
+ * @author Steven Bogaerts
+ */
+public class KnockTrackingPlayer extends SimpleFakeGinRummyPlayer {
+    private static final boolean TESTING = false;
+    StateTracker myTracker;
+
+    protected FakePlayer opp;
+    protected int knockQueryCount;
+    protected int numTurns;
+    private ArrayList<DataInstance> data = new ArrayList<>();
+
+    public KnockTrackingPlayer(FakePlayer opp, ParamList params) {
+        this.opp = opp;
+        this.knockQueryCount = 0;
+        myTracker = new StateTracker(params);
+    }
+    
+    @Override
+    public void startGame(int playerNum, int startingPlayerNum, Card[] cards) {
+        super.startGame(playerNum, startingPlayerNum, cards);
+        this.knockQueryCount = 0; // reset for the start of this new hand
+        myTracker.updateFromStartGame(playerNum, startingPlayerNum, cards);
+    }
+    @Override
+	public boolean willDrawFaceUpCard(Card card){
+        boolean willDraw = super.willDrawFaceUpCard(card);
+        myTracker.updateFromWillDrawFaceUpCard(card, willDraw);
+        return willDraw;
+    }
+    
+    @Override
+	public void reportDraw(int playerNum, Card drawnCard){
+        super.reportDraw(playerNum, drawnCard);
+        myTracker.updateFromReportDraw(playerNum, drawnCard);
+    }
+    @Override
+	public void reportDiscard(int playerNum, Card discardedCard){
+        super.reportDiscard(playerNum, discardedCard);
+        myTracker.updateFromReportDiscard(playerNum, discardedCard);
+    }
+    /**
+     * Remember, the game calls this method to ask the player if it wants to knock.
+     * If the player knocks, the meld set is returned.
+     * If the player does not knock, null is returned.
+     * 
+     * This player only knocks on gin.
+     * If it *could* knock, though, it tracks what points would result.
+     */
+    @Override
+    public ArrayList<ArrayList<Card>> getFinalMelds() {
+        this.knockQueryCount++;
+        if (TESTING) {
+            System.out.println("========== Self getFinalMelds call #" + knockQueryCount + " ==========");
+            System.out.println("self cards: " + cards);
+        }
+
+        // Get a list of the best meld sets (there may be multiple ways to meld all the
+        // cards)
+        ArrayList<ArrayList<ArrayList<Card>>> selfBestMeldSets = GinRummyUtil.cardsToBestMeldSets(this.cards);
+
+        // Get either an empty meld list (if no melds available at all), or one of the
+        // best meld sets I have
+        ArrayList<ArrayList<Card>> selfMeldSet = selfBestMeldSets.isEmpty() ? new ArrayList<ArrayList<Card>>() : selfBestMeldSets.get(random.nextInt(selfBestMeldSets.size()));
+
+        if (TESTING) System.out.println("selfMeldSet: " + selfMeldSet);
+
+        if (opponentKnocked) {
+            if (TESTING) System.out.println("Opponent knocked.");
+            return selfMeldSet;
+        }
+        else { // opponent didn't knock
+            if (TESTING) System.out.println("Opponent didn't knock.");
+            int selfDeadwoodPoints = GinRummyUtil.getDeadwoodPoints(selfMeldSet, this.cards);
+            
+            if (TESTING) System.out.println("selfDeadwoodPoints: " + selfDeadwoodPoints);
+            if (selfDeadwoodPoints > GinRummyUtil.MAX_DEADWOOD)  { // can't knock
+                if (TESTING) System.out.println("Self can't knock.");
+                return null;
+            }
+            else if (selfDeadwoodPoints == 0) { // gin
+                if (TESTING) System.out.println("Self gin.");
+                return selfMeldSet;
+            }
+            else { // could knock, so track, and then don't knock
+                ArrayList<Card> oppHand = (opp.showCards());
+                if (TESTING) System.out.println("Self checking knock results.");
+                double score = OurUtil.computeScoreIfKnock(selfMeldSet, selfDeadwoodPoints, oppHand);
+                if (TESTING) System.out.println("Score if knock (negative for opponent): " + score);
+                //get the predicted score of opponent
+                int numOppCardUnkown = StateTracker.HAND_SIZE - myTracker.getOppCardsKnown().size();
+                double multiOppScore = ScorePrediction.multiOppHandScore(myTracker, cards, numOppCardUnkown + 1); 
+                trackKnockResults(selfMeldSet, selfDeadwoodPoints, multiOppScore, score);
+                return null;
+            }
+        }
+
+        // Original code, from SimpleGinRummyPlayer:
+        /*
+		// Check if deadwood of maximal meld is low enough to go out. 
+		ArrayList<ArrayList<ArrayList<Card>>> bestMeldSets = GinRummyUtil.cardsToBestMeldSets(cards);
+		if (!opponentKnocked && (bestMeldSets.isEmpty() || GinRummyUtil.getDeadwoodPoints(bestMeldSets.get(0), cards) > GinRummyUtil.MAX_DEADWOOD))
+			return null;
+        return bestMeldSets.isEmpty() ? new ArrayList<ArrayList<Card>>() : bestMeldSets.get(random.nextInt(bestMeldSets.size()));
+        */
+	}
+
+    /**
+     * @return positive score if self gets points, or negative score if opp
+     *         undercuts (and gets points).
+     */
+    
+
+    //add new instance to data
+    private final void trackKnockResults(final ArrayList<ArrayList<Card>> selfMeldSet, final int selfDeadwoodPoints, final double multiOppScore, final double score) {
+        System.out.println(score + ": " + selfMeldSet);
+        // System.out.println("Self");
+        data.add(new DataInstance(selfMeldSet, selfDeadwoodPoints, myTracker.getTurnsTaken(), multiOppScore, myTracker, (int)score));
+
+    }
+    public ArrayList<DataInstance> getDataInstance(){
+        return data;
+    }
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Testing
+
+    //
+    public static ArrayList<DataInstance> getDataForDLInput(int numGame){
+        ParamList params = new ParamList(new double[]{}); // don't need any ensemble weights for this test
+        ArrayList<DataInstance> allData = new ArrayList<>();
+        for(int i = 0; i < numGame; i++){
+            FakePlayer carelessPlayer = new KnockOnGinPlayer();
+            KnockTrackingPlayer knockTrackingPlayer = new KnockTrackingPlayer(carelessPlayer, params);
+            TestingGame game = new TestingGame(carelessPlayer, knockTrackingPlayer);
+            game.play();
+            allData.addAll(knockTrackingPlayer.getDataInstance());
+        }
+        return allData;
+    }
+
+    public static void fullGameTest(){
+        ParamList params = new ParamList(new double[]{}); // don't need any ensemble weights for this test
+        TestingGame.setPlayVerbose(false);
+
+        FakePlayer carelessPlayer = new KnockOnGinPlayer();
+        KnockTrackingPlayer knockTrackingPlayer = new KnockTrackingPlayer(carelessPlayer, params);
+
+        TestingGame game = new TestingGame(carelessPlayer, knockTrackingPlayer);
+        game.play();
+
+        
+    }
+ 
+    public static void undercutTest() {
+        System.out.println("========== undercutTest ==========");
+        ParamList params = new ParamList(new double[]{}); // don't need any ensemble weights for this test
+        FakePlayer fakePlayer = new KnockOnGinPlayer();
+        ArrayList<Card> oppCards = OurUtil.makeHand(new String[] {"9D", "TD", "JD", "QD", "KD", "8C", "8S", "8D", "AS", "3D"});
+        fakePlayer.setCards(oppCards);
+
+        KnockTrackingPlayer knockTrackingPlayer = new KnockTrackingPlayer(fakePlayer, params);
+        ArrayList<Card> selfCards = OurUtil.makeHand(new String[] {"AC", "2C", "3C", "5C", "5H", "5S", "5D", "AH", "2D", "4D"});
+        knockTrackingPlayer.setCards(selfCards);
+
+        knockTrackingPlayer.getFinalMelds();
+
+        /*
+        self cards: [AC, 2C, 3C, 5C, 5H, 5S, 5D, AH, 2D, 4D]
+        selfMeldSet: [[AC, 2C, 3C], [5C, 5H, 5S, 5D]]
+        Opponent didn't knock.
+        selfDeadwoodPoints: 7
+        Self checking knock results.
+        oppMeldSet: [[9D, TD, JD, QD, KD], [8C, 8S, 8D]]
+        oppUnmeldedCards: [AS, 3D]
+        Opponent has 4 deadwood with [AS, 3D]
+        Opponent undercuts and scores the undercut bonus of 25 plus deadwood difference of 3 for 28 total points.
+        Score if knock (negative for opponent): -28
+        -28: [[AC, 2C, 3C], [5C, 5H, 5S, 5D]]
+        */
+    }
+
+    /**
+     * This method helped me find an extremely tricky, subtle bug.
+     * It would have been pretty much impossible for me to find the bug without this method.
+     * Even more so, it would have been impossible for someone else to find the bug in my code
+     * without this method.
+     */
+    public static void layoffTest(){
+        System.out.println("========== layoffTest ==========");
+        ParamList params = new ParamList(new double[]{}); // don't need any ensemble weights for this test
+        FakePlayer fakePlayer = new KnockOnGinPlayer();
+        ArrayList<Card> oppCards = OurUtil.makeHand(new String[] {"5C", "4C", "JD", "QS", "KD", "8C", "8S", "8D", "7C", "KS"});
+        fakePlayer.setCards(oppCards);
+
+        KnockTrackingPlayer knockTrackingPlayer = new KnockTrackingPlayer(fakePlayer, params);
+        ArrayList<Card> selfCards = OurUtil.makeHand(new String[] {"AC", "2C", "3C", "7H", "7S", "7D", "AH", "2D", "3S", "4D"});
+        knockTrackingPlayer.setCards(selfCards);
+
+        knockTrackingPlayer.getFinalMelds();
+
+        /*
+        self cards: [AC, 2C, 3C, 7H, 7S, 7D, AH, 2D, 3S, 4D]
+        selfMeldSet: [[AC, 2C, 3C], [7H, 7S, 7D]]
+        Opponent didn't knock.
+        selfDeadwoodPoints: 10
+        Self checking knock results.
+        oppMeldSet: [[8C, 8S, 8D]]
+        oppUnmeldedCards: [4C, 5C, 7C, QS, KS, JD, KD]
+        Opponent lays off 4C on [AC, 2C, 3C].
+        Opponent lays off 5C on [AC, 2C, 3C, 4C].
+        Opponent lays off 7C on [7H, 7S, 7D].
+        Opponent has 40 deadwood with [QS, KS, JD, KD]
+        Self scores the deadwood difference of 30.
+        Score if knock (negative for opponent): 30
+        30: [[AC, 2C, 3C], [7H, 7S, 7D]]
+        */
+    }
+
+    public static void layoffUndercutTest() {
+        System.out.println("========== layoffUndercutTest ==========");
+        ParamList params = new ParamList(new double[]{}); // don't need any ensemble weights for this test
+        FakePlayer fakePlayer = new KnockOnGinPlayer();
+        ArrayList<Card> oppCards = OurUtil.makeHand(new String[] {"5C", "4C", "JD", "QD", "KD", "8C", "8S", "8D", "7C", "3D"});
+        fakePlayer.setCards(oppCards);
+
+        KnockTrackingPlayer knockTrackingPlayer = new KnockTrackingPlayer(fakePlayer, params);
+        ArrayList<Card> selfCards = OurUtil.makeHand(new String[] {"AC", "2C", "3C", "7H", "7S", "7D", "AH", "2D", "3S", "4D"});
+        //{"7D", "7H", "AH", "AC", "3S", "7S", "2C", "2D", "3C", "4D"});
+        knockTrackingPlayer.setCards(selfCards);
+
+        knockTrackingPlayer.getFinalMelds();
+
+        /*
+        self cards: [AC, 2C, 3C, 7H, 7S, 7D, AH, 2D, 3S, 4D]
+        selfMeldSet: [[AC, 2C, 3C], [7H, 7S, 7D]]
+        Opponent didn't knock.
+        selfDeadwoodPoints: 10
+        Self checking knock results.
+        oppMeldSet: [[JD, QD, KD], [8C, 8S, 8D]]
+        oppUnmeldedCards: [4C, 5C, 7C, 3D]
+        Opponent lays off 4C on [AC, 2C, 3C].
+        Opponent lays off 5C on [AC, 2C, 3C, 4C].
+        Opponent lays off 7C on [7H, 7S, 7D].
+        Opponent has 3 deadwood with [3D]
+        Opponent undercuts and scores the undercut bonus of 25 plus deadwood difference of 7 for 32 total points.
+        Score if knock (negative for opponent): -32
+        -32: [[AC, 2C, 3C], [7H, 7S, 7D]]
+        */
+    }
+
+    /**
+     * I spent about as long developing the test code as I did writing the code in the first place.
+     */
+    public static void main(String[] args){
+        // fullGameTest(); // I ran this test first, playing a random game, to find states that looked interesting. Then I hardcoded some of those states for a closer look.
+
+        // undercutTest();
+        // layoffTest();
+        // layoffUndercutTest();
+
+    }
+
+}

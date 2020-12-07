@@ -1,0 +1,75 @@
+package test;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.util.ArrayList;
+import java.util.Scanner;
+
+import ginrummy.Card;
+import ginrummy.GinRummyGame;
+import ginrummy.GinRummyUtil;
+import ginrummy.SimpleGinRummyPlayer;
+import players.StateTracker;
+import players.StateTrackerPlayer;
+import util.OurUtil;
+import players.MeldabilityCalculator;
+import players.ParamList;
+
+/**
+ * This is Moon's test Driver file
+ */
+
+public class DriverMoon {
+    public static void main(String[] args){
+
+        StateTracker.setTesting(true);
+        MeldabilityCalculator.setTesting(true);
+        StateTracker myTracker = StateTracker.readFromFile("tracker_reader.txt");
+        System.out.println(myTracker);
+        ParamList params = new ParamList(new double[]{}); // don't need any ensemble weights for this test
+        MeldabilityCalculator meldCalc = new MeldabilityCalculator(params);
+        Card card = Card.strCardMap.get("2C");
+        ArrayList<Card> myCards = OurUtil.makeHand(new String[] {"2C", "TC", "JH", "4D", "AD", "7S", "5D", "6S", "AS", "TD", "AH"});
+        ArrayList<ArrayList<Card>> lsOfChosenMelds = GinRummyUtil.cardsToBestMeldSets(myCards).get(0);
+        double meldability = meldCalc.selfCardMeldability(card, myTracker, lsOfChosenMelds);
+        System.out.println("Meldability of " + card + " is " + meldability);
+        card = Card.strCardMap.get("JH");
+        lsOfChosenMelds = GinRummyUtil.cardsToBestMeldSets(myCards).get(0);
+        meldability = meldCalc.selfCardMeldability(card, myTracker, lsOfChosenMelds);
+        System.out.println("Meldability of " + card + " is " + meldability);
+
+
+        // ParamList params = new ParamList();
+        // StateTracker tracker1 = new StateTracker(params);
+        // StateTracker tracker2 = new StateTracker(params);
+        // tracker1.setToHardcodedStateTracker1();
+        // tracker2.setToHardcodedStateTracker3();
+        // System.out.println("---------- Hardcoded StateTracker 1 ----------");
+        // System.out.println(tracker1);
+        // System.out.println("---------- Hardcoded StateTracker 3 ----------");
+        // System.out.println(tracker2);
+
+        // System.out.println("---------- Deserializaiton ----------- ");
+        // String fileName = "test_serializationToString.csv";
+        // int col = 3; // column of string of StateTracker is stored
+        // BufferedReader reader;
+        // FileReader file;
+        // try{
+        //     file = new FileReader(fileName);
+        //     reader = new BufferedReader(file);
+        //     String line = reader.readLine();
+        //     while(line != null){
+        //         String[] ls = line.split(",");
+        //         StateTracker tracker = StateTracker.deserializeStateTrackerFromString(ls[col]);
+        //         System.out.println("---------- Deserialized StateTracker ----------");
+        //         System.out.println(tracker);
+        //         line = reader.readLine();
+        //     }
+        //     reader.close();
+        // }
+        // catch(Exception e){
+        //     System.out.println(e);
+        // }
+    }
+}

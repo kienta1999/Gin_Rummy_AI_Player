@@ -1,0 +1,10 @@
+{
+    "java.project.referencedLibraries": [
+        "lib/**/*.jar",
+        "junit.jar",
+        "/Users/kavyashrivastava/Desktop/Spring 2020 folders and work/**/*.jar",
+        "weka-3-9-0-monolithic.jar",
+        "libtensorflow-1.14.0.jar"
+    ],
+    "python.pythonPath": "C:\\Users\\Ta Le Kien\\Anaconda3\\python.exe"
+}

@@ -1,0 +1,74 @@
+package knock;
+
+import java.util.*;
+import ginrummy.Card;
+
+import java.io.FileWriter;
+import java.io.BufferedWriter;
+
+import players.StateTracker;
+
+/*A class that contain the data for deep learning. Generate the raw data (raw_data.txt)
+*/
+public class DataInstance {
+    //independent variable
+    public ArrayList<ArrayList<Card>> selfMeldSet;
+    public int selfDeadwoodPoints;
+    public int numTurn;
+    public double multiOppScore;
+    StateTracker myTracker;
+
+    public int score; //dependent variable
+    private static final int NUM_GAME = 500;
+    
+
+    public DataInstance(ArrayList<ArrayList<Card>> selfMeldSet, int selfDeadwoodPoints, int numTurn, double multiOppScore, StateTracker myTracker, int score){
+        this.selfMeldSet = selfMeldSet;
+        this.selfDeadwoodPoints = selfDeadwoodPoints;
+        this.numTurn = numTurn;
+        this.multiOppScore = multiOppScore;
+        this.myTracker = myTracker;
+
+        this.score = score;
+        // Comparator to sort individual meld by rank
+        // Comparator <Card> sortByRank = (Card c1, Card c2) -> c1.getRank() - c2.getRank();
+        // for(int meldNum = 0; meldNum < selfMeldSet.size(); meldNum++){
+
+        // }
+
+        Comparator <ArrayList<Card>> sortByLengthOfMeld = (ArrayList<Card> meld1, ArrayList<Card> meld2) 
+            -> meld2.size() - meld1.size();
+        Collections.sort(selfMeldSet, sortByLengthOfMeld);
+    }
+
+    public String toString(){
+        return "selfMeldSet: " + selfMeldSet + "\nselfDeadwoodPoints: " + selfDeadwoodPoints + "\nnumTurn: " + numTurn + "\nfinal score: " + score + "\n\n";
+    }
+    //Generate train and test data 
+    public static void main(String[] args) throws Exception{
+        ArrayList<DataInstance> raw_data = KnockTrackingPlayer.getDataForDLInput(NUM_GAME);
+        FileWriter file = new FileWriter("knock\\raw_data.txt");
+        BufferedWriter write_data = new BufferedWriter(file);
+        for(int i = 0; i < raw_data.size(); i++){
+            // write_data.write(raw_data.get(i).selfMeldSet.toString() + ",");
+            ArrayList<ArrayList<Card>> allMelds = raw_data.get(i).selfMeldSet;
+            for(int j = 0; j < allMelds.size(); j++){
+                ArrayList<Card> oneMeld = allMelds.get(j);
+                for(int k = 0; k < oneMeld.size(); k++){
+                    if(k < oneMeld.size() - 1)
+                        write_data.write(oneMeld.get(k).toString() + " ");
+                    else
+                    write_data.write(oneMeld.get(k).toString() + ",");
+                }
+            }
+            write_data.write(raw_data.get(i).selfDeadwoodPoints + ",");
+            write_data.write(raw_data.get(i).numTurn + ",");
+            write_data.write(raw_data.get(i).multiOppScore + ",");
+            write_data.write(StateTracker.serializeStateTrackerToString(raw_data.get(i).myTracker) + ",");
+            // write_data.write("StateTracker,");
+            write_data.write(raw_data.get(i).score + "");
+            write_data.newLine();
+        }
+        write_data.close();
+    }
+}

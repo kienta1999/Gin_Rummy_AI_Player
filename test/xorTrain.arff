@@ -1,0 +1,11 @@
+@relation XORtrain
+
+@attribute num1 numeric
+@attribute num2 numeric
+@attribute xor numeric
+
+@data
+0,0,0
+0,1,1
+1,0,1
+1,1,0

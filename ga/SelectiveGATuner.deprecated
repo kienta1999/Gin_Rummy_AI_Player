@@ -1,0 +1,700 @@
+package ga;
+
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.Random;
+
+import games.TestingGame;
+import players.KnockOnGinPlayer;
+//import games.GATestingGame;
+import players.ParamList;
+import players.SimpleFakeGinRummyPlayer;
+
+import players.handeval.AceTwoBonusHandEvaluator;
+import players.handeval.ConvHandEvaluator;
+import players.handeval.DeadwoodHandEvaluator;
+import players.handeval.EnsembleHandEvalPlayer;
+import players.handeval.IndexEnsembleHandEvalPlayer;
+import players.handeval.MeldabilityHandEvaluator;
+import players.handeval.OneStageKnockDecider;
+import players.handeval.LinearDeadwoodPenaltyHandEvaluator;
+import players.handeval.OppCardsKnownDeadwoodPenaltyHandEvaluator;
+import players.handeval.TwoStageKnockDecider;
+import players.handeval.ScorePredictionKnockDecider;
+
+import java.util.stream.DoubleStream;
+
+
+public class SelectiveGATuner {
+
+    private static boolean TESTING = false;
+    private static boolean GATESTING = false;
+    
+    private static final double SELECT_LOSER_CHANCE = 0.01;
+
+    //default: for any other value, self is using knock on gin strategy
+    public static final int ONE_STAGE_KNOCK_DECIDER = 0;
+    public static final int TWO_STAGE_KNOCK_DECIDER = 1;
+    public static final int SCORE_PREDICTION_KNOCK_DECIDER = 2;
+    public static final int KNOCK_ON_GIN_STRATEGY = 3;
+
+    //default: for any other value, opp is simple player
+    public static final int OPP_IS_SIMPLE_PLAYER = 0;
+    public static final int OPP_IS_KNOCK_ON_GIN_PLAYER = 1;
+
+    //default: for any other value, self is index player
+    public static final int SELF_IS_INDEX_PLAYER = 0;
+    public static final int SELF_IS_ENSEMBLE_PLAYER = 1;
+
+    // public static final double STEP_FOR_EXHAUSIVE_SEARCH = 0.05;
+
+    // public static final int[] allParamsToTune = {ParamList.ST_PARAMETER, ParamList.ST_SMALLPARAMETER, ParamList.ST_SMALLESTPARAMETER};
+    
+
+    public ParamList[] createRandomIndividuals(int popSize, int numOfEvaluators){
+        Random r = new Random();
+        ParamList[] population = new ParamList[popSize];
+        for(int i = 0; i<popSize; i++){
+           population[i] = ParamList.getRandomParamList(numOfEvaluators);
+        }
+        return population;
+    }
+  
+    private static int genCount = 0;
+    private static java.util.concurrent.atomic.AtomicInteger indivCount = new java.util.concurrent.atomic.AtomicInteger(0);
+
+    public static double playManyGames(ParamList params, int knockDeciderFlag, int opponentFlag, int selfFlag, int gamesPerIndividual){
+        // ParamList param = new ParamList(paramAL);
+        LinearDeadwoodPenaltyHandEvaluator linearHe = new LinearDeadwoodPenaltyHandEvaluator(params);
+        OppCardsKnownDeadwoodPenaltyHandEvaluator oppCardsHe = new OppCardsKnownDeadwoodPenaltyHandEvaluator(params);
+        EnsembleHandEvalPlayer p0 = new IndexEnsembleHandEvalPlayer(params, new MeldabilityHandEvaluator(params), 
+                                                                                 new DeadwoodHandEvaluator(), 
+                                                                                 new AceTwoBonusHandEvaluator(), 
+                                                                                 new ConvHandEvaluator(params), 
+                                                                                 //new MultiOppHandMeldabilityEvaluator(params),
+                                                                                 linearHe,
+                                                                                 oppCardsHe);
+        linearHe.setEnsemblePlayer(p0);
+        oppCardsHe.setEnsemblePlayer(p0);
+
+        //When we want to use Ensemble Player instead
+        if(selfFlag == SELF_IS_ENSEMBLE_PLAYER){
+            MeldabilityHandEvaluator mhe = new MeldabilityHandEvaluator(params);
+            ConvHandEvaluator che = new ConvHandEvaluator(params);
+            mhe.setShouldNormalize(true);
+            che.setShouldNormalize(true);
+            p0 = new EnsembleHandEvalPlayer(params, mhe, new DeadwoodHandEvaluator(), 
+                                            new AceTwoBonusHandEvaluator(), che, linearHe, oppCardsHe);
+
+            linearHe.setEnsemblePlayer(p0);
+            oppCardsHe.setEnsemblePlayer(p0);
+            //linearHe.setShouldNormalize(true); - uncomment when Moon finishes
+            //oppCardsHe.setShouldNormalize(true); - uncomment when Moon finishes
+        }
+
+        if(knockDeciderFlag == ONE_STAGE_KNOCK_DECIDER){
+            p0.setKnockDecider(new OneStageKnockDecider(params));
+        }
+        else if(knockDeciderFlag == TWO_STAGE_KNOCK_DECIDER){
+            p0.setKnockDecider(new TwoStageKnockDecider(params));
+        }
+        else if(knockDeciderFlag == SCORE_PREDICTION_KNOCK_DECIDER){
+            p0.setKnockDecider(new ScorePredictionKnockDecider(params));
+        }
+
+        SimpleFakeGinRummyPlayer p1 = new SimpleFakeGinRummyPlayer(params);
+        if(opponentFlag == OPP_IS_SIMPLE_PLAYER){
+            p1 = new SimpleFakeGinRummyPlayer(params);
+        }
+        else if(opponentFlag == OPP_IS_KNOCK_ON_GIN_PLAYER){
+            p1 = new KnockOnGinPlayer(params);
+        }
+        int p0Wins;
+
+        TestingGame gameManager = new TestingGame(p0, p1);
+        TestingGame.setPlayVerbose(false);
+        p0Wins = 0;
+        params.enforceRestrictions(); //player0.normalizeWeights();
+        //p0.setParamList(params);
+
+        System.out.print("(" + genCount + ":" + indivCount.incrementAndGet() + ")");
+        for(int j = 0; j < gamesPerIndividual; j++){
+            int winner = gameManager.play();
+            if(winner == 0)
+                p0Wins += 1; 
+        }
+
+        return (double)p0Wins / gamesPerIndividual;
+    }
+    public double[] calcFitnessStream(ParamList[] paramLists, int knockDeciderFlag, int opponentFlag, int selfFlag, int gamesPerIndividual){
+        ArrayList<ParamList> allParamList = new ArrayList<>();
+        for(int i = 0; i < paramLists.length; i++){
+            allParamList.add(paramLists[i]);
+        }
+        double start, elapsed;
+        double[] fitnessValue = new double[paramLists.length];
+        start = System.currentTimeMillis();
+        fitnessValue = allParamList.stream().parallel().map((x) -> {return playManyGames(x, knockDeciderFlag, opponentFlag, selfFlag, gamesPerIndividual);}).mapToDouble(x -> {return x;}).toArray();
+        elapsed = System.currentTimeMillis() - start;
+        System.out.println("Elapsed time in parallel: " + elapsed);
+        indivCount.set(0); // reset the individual count now that calc fitness is done
+        genCount++; // Increase for the next generation
+        return fitnessValue;
+    }
+
+    public double[] calcFitnessLoop(ParamList[] paramLists, int numOfEvaluators, int knockDeciderFlag, int opponentFlag, int selfFlag, int gamesPerIndividual){
+        double start, elapsed;
+       
+        double[] fitnessValue = new double[paramLists.length];
+        for(int s = 0; s < fitnessValue.length; s++) {
+            fitnessValue[s] = 0;
+        }
+        
+        ParamList dummyParams = ParamList.getRandomParamList(numOfEvaluators);
+        LinearDeadwoodPenaltyHandEvaluator linearHe = new LinearDeadwoodPenaltyHandEvaluator(dummyParams);
+        OppCardsKnownDeadwoodPenaltyHandEvaluator oppCardsHe = new OppCardsKnownDeadwoodPenaltyHandEvaluator(dummyParams);
+        EnsembleHandEvalPlayer p0 = new IndexEnsembleHandEvalPlayer(dummyParams, new MeldabilityHandEvaluator(dummyParams), 
+                                                                                 new DeadwoodHandEvaluator(), 
+                                                                                 new AceTwoBonusHandEvaluator(), 
+                                                                                 new ConvHandEvaluator(dummyParams), 
+                                                                                 //new MultiOppHandMeldabilityEvaluator(params),
+                                                                                 linearHe,
+                                                                                 oppCardsHe);
+        linearHe.setEnsemblePlayer(p0);
+        oppCardsHe.setEnsemblePlayer(p0);        //EnsembleHandEvalPlayer player0 = new EnsembleHandEvalPlayer(params)
+         //When we want to use Ensemble Player instead
+
+         if(selfFlag == SELF_IS_ENSEMBLE_PLAYER){
+            MeldabilityHandEvaluator mhe = new MeldabilityHandEvaluator(dummyParams);
+            ConvHandEvaluator che = new ConvHandEvaluator(dummyParams);
+            mhe.setShouldNormalize(true);
+            che.setShouldNormalize(true);
+            p0 = new EnsembleHandEvalPlayer(dummyParams, mhe, new DeadwoodHandEvaluator(), 
+                                            new AceTwoBonusHandEvaluator(), che, linearHe, oppCardsHe);
+
+            linearHe.setEnsemblePlayer(p0);
+            oppCardsHe.setEnsemblePlayer(p0);
+            //linearHe.setShouldNormalize(true); - uncomment when Moon finishes
+            //oppCardsHe.setShouldNormalize(true); - uncomment when Moon finishes
+        }
+
+        if(knockDeciderFlag == ONE_STAGE_KNOCK_DECIDER){
+            p0.setKnockDecider(new OneStageKnockDecider(dummyParams));
+        }
+        else if(knockDeciderFlag == TWO_STAGE_KNOCK_DECIDER){
+            p0.setKnockDecider(new TwoStageKnockDecider(dummyParams));
+        }
+        else if(knockDeciderFlag == SCORE_PREDICTION_KNOCK_DECIDER){
+            p0.setKnockDecider(new OneStageKnockDecider(dummyParams));
+        }
+        //else - KnockOnGin Strategy
+
+        SimpleFakeGinRummyPlayer p1 = new SimpleFakeGinRummyPlayer(dummyParams);
+        if(opponentFlag == OPP_IS_SIMPLE_PLAYER){
+            p1 = new SimpleFakeGinRummyPlayer(dummyParams);
+        }
+        else if(opponentFlag == OPP_IS_KNOCK_ON_GIN_PLAYER){
+            p1 = new KnockOnGinPlayer(dummyParams);
+        }
+        
+        int p0Wins;
+
+        TestingGame gameManager = new TestingGame(p0, p1);
+        TestingGame.setPlayVerbose(false);
+
+        
+        // int weight = 0;
+       // player0.addHandEvaluator(new DeadwoodHandEvaluator(), weight);
+       // player0.addHandEvaluator(new ConvHandEvaluator(dummyParams), weight);
+       // player0.addHandEvaluator(new MeldabilityHandEvaluator(dummyParams), weight);
+       // player0.addHandEvaluator(new AceTwoBonusHandEvaluator(), weight);
+        //start = System.currentTimeMillis();
+        for(int i = 0; i < paramLists.length; i++){
+            p0Wins = 0;
+            ParamList params = paramLists[i]; 
+            params.enforceRestrictions(); //player0.normalizeWeights();
+            p0.setParamList(params); //hopefully, not adding more weights but chnaging the dummy place holder's weights
+            if(TESTING)System.out.println("Individual " + i + " is: " + params);
+            
+            for(int j = 0; j < gamesPerIndividual; j++){
+                int winner = gameManager.play();
+                if(winner == 0)
+                    p0Wins += 1; 
+            }
+            double fitness = p0Wins;
+            fitnessValue[i] += fitness;
+        }
+        //elapsed = System.currentTimeMillis() - start;
+        //System.out.println("Elapsed time in parallel: " + elapsed);
+
+        if(TESTING){
+            for(int k = 0; k < paramLists.length; k++)
+                System.out.println("\nThe number of wins for individual " + k + " is " + fitnessValue[k]); 
+        }
+        
+        for(int l = 0; l < fitnessValue.length; l++)
+            fitnessValue[l] = (double) fitnessValue[l]/gamesPerIndividual;
+
+        return fitnessValue;
+    }
+
+    public ParamList[] select(ParamList[] population, double[] fitnesses){
+        ParamList[] twoSelectedIndividuals = new ParamList[2]; 
+
+        // Calculate the sum of all the fitnesses
+        double sumOfFitnessWithLoserChance = 0;
+        for(int i = 0; i < fitnesses.length; i++)
+            sumOfFitnessWithLoserChance += fitnesses[i] + SELECT_LOSER_CHANCE; // adds a small chance for every fitness, so even 0 fitness individuals can be selected
+            
+        // Calculate selection probabilities based on fitnesses
+        LinkedList<Double> selectionProb = new LinkedList<Double>();
+        for(int i = 0; i < fitnesses.length; i++)
+            selectionProb.add((fitnesses[i] + SELECT_LOSER_CHANCE)/sumOfFitnessWithLoserChance);
+        
+        if(TESTING) { // print selection probabilities
+            for(int i = 0; i<selectionProb.size(); i++)
+                System.out.println("Selection probability of individual " + i  + " with fitness value: " + fitnesses[i]  + " is " + selectionProb.get(i));
+        }
+
+        // Make ArrayList of individuals, to select from
+        ArrayList<ParamList> eligibleIndividuals = new ArrayList<ParamList>(population.length);
+        for(int i = 0; i < population.length; i++)
+            eligibleIndividuals.add(population[i]);
+        
+        Random r = new Random();
+        //choose 2 individuals
+        for(int choiceID = 0; choiceID < 2; choiceID++){
+            double randomValue = r.nextDouble();
+            
+            if (TESTING) {
+                System.out.println("RandomValue: " + randomValue);
+                double t = 0;
+                for (int j = 0; j < eligibleIndividuals.size(); j++) {
+                    t += selectionProb.get(j);
+                    System.out.println("Individual " + j + " has range [" + (t-selectionProb.get(j)) + ", " + t + "]");
+                }
+            }
+            
+            // Find the probability range corresponding to randomValue
+            int selectedID = -1;
+            double sum = 0;
+            while(randomValue>=sum){
+                selectedID++;
+                sum+=selectionProb.get(selectedID);
+            }
+            
+            if(TESTING) System.out.println("Selected individual is: " + selectedID);
+
+            // Select individual at index selectedID
+            twoSelectedIndividuals[choiceID] = eligibleIndividuals.get(selectedID);
+
+            // Remove this individual from the structures, so it isn't chosen a second time
+            eligibleIndividuals.remove(selectedID);
+            selectionProb.remove(selectedID);
+
+            // Renormalize the probabilities, since we removed one
+            double normsum = 0;
+            for(int s = 0; s<selectionProb.size(); s++)
+                 normsum+= selectionProb.get(s);
+            for(int m = 0; m<selectionProb.size(); m++)
+                selectionProb.set(m , selectionProb.get(m)/normsum);
+        }
+
+        return twoSelectedIndividuals;
+    }
+
+    public ParamList[] crossover(ParamList parent1, ParamList parent2, int numOfEvaluators){
+        ParamList[] children = parent1.twoPointsCrossover(parent2, numOfEvaluators); //we might consider changing this or randomising between single point and two points
+        return children;
+    }
+
+    public void mutate(ParamList[] population, double mutationChance, ArrayList<Double> fixedValues){
+        for(int individualIndex = 0; individualIndex<population.length; individualIndex++){
+            population[individualIndex].mutate(mutationChance);
+        }
+    }
+    
+    public static void geneticAlgorithm(int popSize, int numGenerations, int gamesPerIndividual, int numOfEvaluators, ArrayList<Double> fixedValues, double mutationChance, int knockDeciderFlag, int opponentFlag, int selfFlag){
+        if (GATESTING) System.out.println("=========================\n====GATESTING=========\n=========================\n");
+        //ParamList.fixedValues = fixedValues;
+        double averageFitnessThisGen;
+        ArrayList<Double> averageFitnessEachGen = new ArrayList<Double>(numGenerations);
+        ArrayList<Double> bestFitnessEachGen = new ArrayList<Double>(numGenerations);
+        SelectiveGATuner ga = new SelectiveGATuner();
+        
+        if (GATESTING) System.out.println("-------------------\nCalling createRandomIndividuals");
+        ParamList[] population = ga.createRandomIndividuals(popSize, numOfEvaluators); // need to review for the second parameter
+        
+        if (GATESTING) System.out.println("-------------------\nCalling calcFitness");
+        double[] fitness = ga.calcFitnessStream(population, knockDeciderFlag, opponentFlag, selfFlag, gamesPerIndividual);
+        int generationID = 0;
+        int nextGenTracker; 
+        if (GATESTING) System.out.println("Fitnesses:\n" + java.util.Arrays.toString(fitness));
+
+        // find individual with best fitness, and log results
+        if (GATESTING) System.out.println("-------------------\nFinding best individual");
+        double[] results = findFitnessSumAndBestIndex(fitness);
+        double sum = results[0];
+        int indexOfBest = (int) results[1];
+        double bestFitness = fitness[indexOfBest];
+        averageFitnessThisGen = sum / population.length;
+        averageFitnessEachGen.add(averageFitnessThisGen);
+        bestFitnessEachGen.add(bestFitness);
+        System.out.println("-------------------\nThe best individual of generation " + generationID + " is: " + population[indexOfBest]);
+        System.out.println("The best individual's fitness value is: " + bestFitness);
+        System.out.println("The average fitness this generation is: " + averageFitnessThisGen);
+        System.out.println("Across generations, averageFitness: " + averageFitnessEachGen);
+        System.out.println("Across generations, bestFitness: " + bestFitnessEachGen);
+        ParamList eliteIndividual = new ParamList(population[indexOfBest]);
+        //if (GATESTING) System.out.println("eliteIndividual: " + eliteIndividual + ", " + eliteIndividual.getGraphicalRepresentation());
+        while(generationID < numGenerations){
+            if (GATESTING) {
+                System.out.println("===========================================");
+                System.out.println("Generation: " + generationID);
+                System.out.println("Population: ");
+                //System.out.println(java.util.Arrays.toString(population));                
+                //for(int indivID = 0; indivID < population.length; indivID++){}
+                    //System.out.println(population[indivID].getGraphicalRepresentation());
+            }
+
+            // Make the next generation
+            if (GATESTING) System.out.println("-------------------\nMaking next generation");
+            nextGenTracker = 0;
+            ParamList[] nextGen = new ParamList[population.length];
+            while(nextGenTracker < population.length-1){ // -1 so that we save space for the eliteIndividual
+                if (GATESTING) System.out.println("-----\nnextGenTracker: " + nextGenTracker);
+                ParamList[] selectedIndividuals = ga.select(population, fitness);
+
+                if (GATESTING) {
+                    System.out.println("--\nselectedIndividuals:");
+                    for(int indivID = 0; indivID < selectedIndividuals.length; indivID++){}
+                        //System.out.println(selectedIndividuals[indivID].getGraphicalRepresentation());
+                }
+
+                ParamList[] newIndividuals = ga.crossover(selectedIndividuals[0], selectedIndividuals[1], numOfEvaluators);
+                if (GATESTING) {
+                    System.out.println("--\nnewIndividuals:");
+                    //for(int indivID = 0; indivID < newIndividuals.length; indivID++){}
+                        //System.out.println(newIndividuals[indivID].getGraphicalRepresentation());
+                }
+
+                nextGen[nextGenTracker] = newIndividuals[0];           
+                //if (GATESTING) System.out.println("Next gen now contains child 1: " + nextGen[nextGenTracker].getGraphicalRepresentation());
+                nextGenTracker++;
+                if(nextGenTracker < population.length-1) {// -1 so that we save space for the eliteIndividual
+                    nextGen[nextGenTracker] = newIndividuals[1];
+                    //if (GATESTING) System.out.println("Next gen now contains child 2: " + nextGen[nextGenTracker].getGraphicalRepresentation());
+                    nextGenTracker++;
+                }
+            }
+            double [] dummyEnsembleWeights = new double[numOfEvaluators];
+            nextGen[nextGen.length-1] = new ParamList(dummyEnsembleWeights); // dummy placeholder for mutation. Elite individual will go here
+
+            // apply mutation
+            if (GATESTING) System.out.println("-------------------\nMutating");
+            ga.mutate(nextGen, mutationChance, fixedValues);
+            if (GATESTING) System.out.println("Results of mutation:\n" + java.util.Arrays.toString(nextGen));
+
+            // Add the eliteIndividual
+            if (GATESTING) System.out.println("-------------------\nAdding elite individual");
+            nextGen[nextGen.length-1] = eliteIndividual;
+            if (GATESTING) {
+                System.out.println("Now, next gen:\n");
+                for(int indivID = 0; indivID < nextGen.length; indivID++){}
+                    //System.out.println(nextGen[indivID].getGraphicalRepresentation());
+            }
+    
+            // calculate the fitness
+            if (GATESTING) System.out.println("-------------------\nCalling calcFitness");
+            fitness = ga.calcFitnessStream(nextGen, knockDeciderFlag, opponentFlag, selfFlag, gamesPerIndividual);
+            if (GATESTING) System.out.println("Fitnesses:\n" + java.util.Arrays.toString(fitness));
+
+            // find individual with best fitness
+            if (GATESTING) System.out.println("-------------------\nFinding best individual");
+            results = findFitnessSumAndBestIndex(fitness);
+            sum = results[0];
+            indexOfBest = (int) results[1];
+            bestFitness = fitness[indexOfBest];
+            averageFitnessThisGen = sum / nextGen.length;
+            averageFitnessEachGen.add(averageFitnessThisGen);
+            bestFitnessEachGen.add(bestFitness);
+            eliteIndividual = new ParamList(nextGen[indexOfBest]);
+           // if (GATESTING) System.out.println("eliteIndividual: " + eliteIndividual + ", " + eliteIndividual.getGraphicalRepresentation());
+
+            System.out.println("-------------------\nThe best individual of generation " + generationID + " is: " + nextGen[indexOfBest]);
+            System.out.println("The best individual's fitness value is: " + bestFitness);
+            System.out.println("The average fitness this generation is: " + averageFitnessThisGen);
+            System.out.print("Across generations, averageFitness: ");
+            for(double n: averageFitnessEachGen) System.out.printf("%.3f, ", n);
+            System.out.println("Across generations, bestFitness: " + bestFitnessEachGen);
+            //for(double n: bestFitnessEachGen) System.out.printf("%.3f, ", n);
+            System.out.println();
+            population = nextGen;
+            generationID++;
+        }
+        
+    }
+
+    protected static double[] findFitnessSumAndBestIndex(double[] fitness) { //I just copied this
+        double bestFitness = fitness[0];
+        int indexOfBest = 0;
+        double sum = 0;
+        for(int r = 0; r<fitness.length; r++){
+            sum += fitness[r];
+            if(fitness[r]>bestFitness){
+                bestFitness = fitness[r];
+                indexOfBest = r;
+            }
+        }
+
+        return new double[] {sum, indexOfBest};
+    }
+ 
+    public void setTesting(boolean testing){
+        TESTING = testing;
+    }
+
+    public static void randomIndividualsTesting() {
+        System.out.println("========== randomIndividualsTesting ==========\n");
+        System.out.println("Making two sets of random individuals:");
+        ParamList pl1 = ParamList.getRandomParamList(0);
+        ParamList pl2 = ParamList.getRandomParamList(0);
+        System.out.println("First individual: " + pl1);
+        System.out.println("Second individual: " + pl2);
+    }
+
+    public static void calcFitnessTesting(int numOfEvaluators, int knockDeciderFlag, int opponentFlag, int selfFlag, int gamesPerIndividual){
+        System.out.println("========== calcFitnessTesting ==========");
+        SelectiveGATuner tester = new SelectiveGATuner();
+        ParamList[] population = new ParamList[2];
+        population[0] = ParamList.getRandomParamList(numOfEvaluators);//new ParamList(new double[]{0.7, 0.1, 0.19, 0, 0, 0});
+        
+        population[1] = ParamList.getRandomParamList(numOfEvaluators);//new ParamList(new double[]{0.15, 0.75, 0.09, 0, 0, 0});
+        
+
+       double[] fitnessValue = tester.calcFitnessLoop(population, numOfEvaluators, knockDeciderFlag, opponentFlag, selfFlag, gamesPerIndividual);
+       System.out.println("The fitness of Player with individual 0 is: " + fitnessValue[0]);
+       System.out.println("The fitness of Player with individual 1 is: " + fitnessValue[1]);
+
+    }
+    
+    // //Use stream to find the best combination of weights
+    // public static double[] exhaustiveSearchStream(ParamList bestParam){
+    //     double start, elapsed;
+    //     start = System.currentTimeMillis();
+    //     ArrayList<ArrayList<Double>> allWeight = new ArrayList<ArrayList<Double>>();
+    //     //Generate all possible weight
+    //     for(double deadwoodEvalWeight = 0; deadwoodEvalWeight <= 1; deadwoodEvalWeight += STEP_FOR_EXHAUSIVE_SEARCH){
+    //         for(double convHandWeight = 0; convHandWeight <= 1 - deadwoodEvalWeight; convHandWeight += STEP_FOR_EXHAUSIVE_SEARCH){
+    //             double meldabilityWeight = 1-(deadwoodEvalWeight+convHandWeight);
+    //             ArrayList<Double> temp = new ArrayList<Double>();
+    //             temp.add(deadwoodEvalWeight);
+    //             temp.add(convHandWeight);
+    //             temp.add(meldabilityWeight);
+    //             /*if(TESTING){
+    //                 for(double weight: temp){
+    //                     System.out.print(weight);
+    //                 }*/
+    //             allWeight.add(temp);
+    //         }
+    //     }
+    //     //score of the respective weight
+    //     int[] score = allWeight.stream()
+    //             //.parallel()
+    //             .map((x) -> playGameForExhaustiveSearch(x, bestParam))
+    //             .mapToInt(x -> {return x;})
+    //             .toArray();
+        
+    //     int indexOfMaxScore = 0;
+    //     //find the index of the max score
+    //     for(int i = 0; i < score.length; i++){
+    //         if(score[indexOfMaxScore] < score[i])
+    //             indexOfMaxScore = i;
+    //     }
+    //     ArrayList<Double> ans = allWeight.get(indexOfMaxScore);
+        
+    //     System.out.println("Max Score: " + score[indexOfMaxScore]);
+    //     //return the weight associated with max score
+    //     elapsed = System.currentTimeMillis() - start;
+    //     System.out.println("Total time to run the exhaustiveSearchStream: " + elapsed);
+        
+    //     return new double[]{ans.get(0), ans.get(1), ans.get(2)};
+    // }
+
+    // //The static method to run stream on
+    // public static int playGameForExhaustiveSearch(ArrayList<Double> weight, ParamList bestParam){
+    //     double deadwoodEvalWeight = weight.get(0);
+    //     double convHandWeight = weight.get(1);
+    //     double meldabilityWeight = weight.get(2);
+    //     IndexEnsembleHandEvalPlayer player0 = new IndexEnsembleHandEvalPlayer(bestParam);
+    //     player0.addHandEvaluator(new DeadwoodHandEvaluator(), deadwoodEvalWeight);
+    //     player0.addHandEvaluator(new ConvHandEvaluator(bestParam), convHandWeight);
+    //     player0.addHandEvaluator(new MeldabilityHandEvaluator(bestParam), meldabilityWeight);
+    //     player0.setWeight(0, deadwoodEvalWeight);
+    //     player0.setWeight(1, convHandWeight);
+    //     player0.setWeight(2, meldabilityWeight);
+    //     SimpleFakeGinRummyPlayer player1 = new SimpleFakeGinRummyPlayer(bestParam);
+
+    //     TestingGame gameManager = new TestingGame(player0, player1);
+    //     TestingGame.setPlayVerbose(false);
+    //     int p0Wins = 0;
+    //     for(int i = 0; i < gamesPerIndividual; i++){
+    //         int winner = gameManager.play();
+    //         if(winner == 0)
+    //             p0Wins += 1;
+    //     }
+    //     if(TESTING){
+    //         System.out.println("DeadwoodHandEvaluator's weight: " + deadwoodEvalWeight);
+    //         System.out.println("ConvHandEvaluator's weight: " + convHandWeight);
+    //         System.out.println("MeldabilityHandEvaluator's weight: " + meldabilityWeight);
+    //         System.out.println("Score: " + p0Wins);
+    //     }        
+    //     return p0Wins;
+    // }
+    
+    // public static double[] exhaustiveSearchLoop(ParamList bestParam){
+    //     double start, elapsed;
+    //     start = System.currentTimeMillis();
+        
+    //     double deadwoodEvalWeight = 0;
+    //     double convHandWeight = 0;
+    //     double meldabilityWeight = 1-(deadwoodEvalWeight+convHandWeight);
+
+    //     double[] bestWeightCombination = new double[3];
+    //     int maxWin = 0;
+
+    //     LinearDeadwoodPenaltyHandEvaluator linearHe = new LinearDeadwoodPenaltyHandEvaluator(bestParam);
+    //     OppCardsKnownDeadwoodPenaltyHandEvaluator oppCardsHe = new OppCardsKnownDeadwoodPenaltyHandEvaluator(bestParam);
+    //     IndexEnsembleHandEvalPlayer player0 = new IndexEnsembleHandEvalPlayer(bestParam, new MeldabilityHandEvaluator(bestParam), 
+    //                                                                                     new DeadwoodHandEvaluator(), 
+    //                                                                                     new AceTwoBonusHandEvaluator(), 
+    //                                                                                     new ConvHandEvaluator(bestParam), 
+    //                                                                                     //new MultiOppHandMeldabilityEvaluator(bestParam),
+    //                                                                                     linearHe,
+    //                                                                                     oppCardsHe);
+    //     linearHe.setEnsemblePlayer(player0);
+    //     oppCardsHe.setEnsemblePlayer(player0);
+    
+
+    //     SimpleFakeGinRummyPlayer player1 = new SimpleFakeGinRummyPlayer(bestParam);
+        
+
+    //     TestingGame gameManager = new TestingGame(player0, player1);
+    //     TestingGame.setPlayVerbose(false);
+
+        
+    //     while(deadwoodEvalWeight <= 1){
+    //         while(convHandWeight <= 1 - deadwoodEvalWeight){
+    //             int p0Wins = 0;
+    //             meldabilityWeight = 1-(deadwoodEvalWeight+convHandWeight);
+    //             player0.setWeight(0, deadwoodEvalWeight);
+    //             player0.setWeight(1, convHandWeight);
+    //             player0.setWeight(2, meldabilityWeight);
+                
+    //             for(int j = 0; j < gamesPerIndividual; j++){
+    //                 int winner = gameManager.play();
+    //                 if(winner == 0)
+    //                     p0Wins += 1;
+    //             }
+    //             if(TESTING){
+    //                 System.out.println("DeadwoodHandEvaluator's weight: " + deadwoodEvalWeight);
+    //                 System.out.println("ConvHandEvaluator's weight: " + convHandWeight);
+    //                 System.out.println("MeldabilityHandEvaluator's weight: " + meldabilityWeight);
+    //                 System.out.println("Score: " + p0Wins);
+    //             }
+                
+    //             if(maxWin < p0Wins){
+    //                 maxWin = p0Wins;
+    //                 bestWeightCombination[0] = deadwoodEvalWeight;
+    //                 bestWeightCombination[1] = convHandWeight;
+    //                 bestWeightCombination[2] = meldabilityWeight;
+    //             }
+    //             convHandWeight += STEP_FOR_EXHAUSIVE_SEARCH;
+    //         }
+    //         convHandWeight = 0;
+    //         deadwoodEvalWeight += STEP_FOR_EXHAUSIVE_SEARCH;
+    //     }
+
+    //     System.out.println("Max Score: " + maxWin);
+    //     elapsed = System.currentTimeMillis() - start;
+    //     if(TESTING)
+    //         System.out.println("Total time to run the exhaustiveSearchLoop: " + elapsed);
+        
+    //     //if(TESTING)System.out.println("Best weight combination: " + bestWeightCombination.toString());
+    //     return bestWeightCombination;
+    // }
+
+
+    // public static double[] testExhaustiveSearchLoop(){
+    //     System.out.println("==============testExhaustiveSearchLoop===================");
+    //     ParamList bestParam = new ParamList(new double[]{1,0,0,0,0,0});
+    //     GATuner tester = new GATuner();
+    //     bestParam.set(ParamList.CH_ONEAWAY, 0.374);
+    //     bestParam.set(ParamList.CH_TWOAWAY, 0.149);
+    //     bestParam.set(ParamList.CH_SAMERANK, 0.477);
+    //     bestParam.set(ParamList.MC_SELF_LOW_OBTAINABILITY, 0.086);
+    //     bestParam.set(ParamList.MC_SELF_RATIO_FOR_UNKNOWN, 0.885);
+    //     bestParam.set(ParamList.MC_SELF_WRANK, 0.565);
+    //     bestParam.set(ParamList.MC_SELF_WRUN, 0.435);
+    //     bestParam.set(ParamList.ST_PARAMETER, 0.896);
+    //     bestParam.set(ParamList.ST_SMALLESTPARAMETER, 0.304);
+    //     bestParam.set(ParamList.ST_SMALLPARAMETER, 0.376);
+        
+        
+    //     double[] bestWeightCombination= exhaustiveSearchLoop(bestParam);
+    //     System.out.println("Best weight for DeadwoodHandEvaluator: " + bestWeightCombination[0]);
+    //     System.out.println("Best weight for ConvHandEvaluator: " + bestWeightCombination[1]);
+    //     System.out.println("Best weight for MeldabilityHandEvaluator: " + bestWeightCombination[2]);
+    //     return bestWeightCombination;
+    // }
+    // public static double[] testExhaustiveSearchStream(){
+    //     System.out.println("==============testExhaustiveSearchStream===================");
+    //     ParamList bestParam = new ParamList();
+    //     GATuner tester = new GATuner();
+    //     bestParam.set(ParamList.CH_ONEAWAY, 0.374);
+    //     bestParam.set(ParamList.CH_TWOAWAY, 0.149);
+    //     bestParam.set(ParamList.CH_SAMERANK, 0.477);
+    //     bestParam.set(ParamList.MC_SELF_LOW_OBTAINABILITY, 0.086);
+    //     bestParam.set(ParamList.MC_SELF_RATIO_FOR_UNKNOWN, 0.885);
+    //     bestParam.set(ParamList.MC_SELF_WRANK, 0.565);
+    //     bestParam.set(ParamList.MC_SELF_WRUN, 0.435);
+    //     bestParam.set(ParamList.ST_PARAMETER, 0.896);
+    //     bestParam.set(ParamList.ST_SMALLESTPARAMETER, 0.304);
+    //     bestParam.set(ParamList.ST_SMALLPARAMETER, 0.376);
+        
+    //     double[] bestWeightCombination= exhaustiveSearchStream(bestParam);
+    //     System.out.println("Best weight for DeadwoodHandEvaluator: " + bestWeightCombination[0]);
+    //     System.out.println("Best weight for ConvHandEvaluator: " + bestWeightCombination[1]);
+    //     System.out.println("Best weight for MeldabilityHandEvaluator: " + bestWeightCombination[2]);
+    //     return bestWeightCombination;
+    // }
+
+   
+    public static void main(String[] args){
+        int popSize = 20;
+        int numGenerations = 10; 
+        int gamesPerIndividual = 200;
+        int numOfEvaluators = 6;
+        ArrayList<Double> fixedValues = new ArrayList<Double>();
+        for(int i = 0; i < ParamList.NUM_NONENSEMBLE_PARAMS + numOfEvaluators; i++){
+            fixedValues.add(-1.0);
+        }
+        double mutationChance = 0.02;
+        int knockDeciderFlag = TWO_STAGE_KNOCK_DECIDER;
+        int opponentFlag = OPP_IS_SIMPLE_PLAYER;
+        int selfFlag = SELF_IS_ENSEMBLE_PLAYER;
+
+       // geneticAlgorithm(popSize, numGenerations, gamesPerIndividual, NUM_OF_EVALUATORS);
+
+        
+        geneticAlgorithm(popSize, numGenerations, gamesPerIndividual,
+        numOfEvaluators,  fixedValues, mutationChance, knockDeciderFlag, opponentFlag, selfFlag);
+        
+
+        // calcFitnessTesting();
+        // testExhaustiveSearchStream();
+        // testExhaustiveSearchLoop();
+       // testMutateSelectiveParamList();
+
+    }
+}

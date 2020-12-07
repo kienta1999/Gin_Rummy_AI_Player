@@ -1,0 +1,129 @@
+package players.handeval;
+import ginrummy.Card;
+import ginrummy.GinRummyUtil;
+//import given.GinRummyGame;
+//import games.TestingGame;
+import games.GATestingGame;
+import ginrummy.GinRummyPlayer;
+import players.OurSimpleGinRummyPlayer;
+import players.FakePlayer;
+import players.SimpleFakeGinRummyPlayer;
+import players.ParamList;
+import util.OurUtil;
+import java.util.ArrayList;
+
+/**
+ * This is the same as HandEvalPlayer, except choose10From11Cards breaks ties
+ * by choosing the card with the highest deadwood value.
+ * 
+ * @author Steven Bogaerts
+ */
+public class TieBreakingHandEvalPlayer extends SingleHandEvalPlayer {
+
+    protected static final boolean TESTING = false;
+
+    public TieBreakingHandEvalPlayer(ParamList params) {
+        super(params);
+    }
+
+    public TieBreakingHandEvalPlayer(HandEvaluator he, ParamList params) {
+        super(he, params);
+    }
+
+    /**
+     * the 10 cards that make the best hand, according to the HandEvaluator.
+     * If there's a tie, returns the card among the ties with the highest deadwood value.
+     * 
+     * @return the Card we don't want out of the 11
+     */
+    // VERIFIED 6/8
+    @Override
+    protected Card choose10From11Cards(ArrayList<Card> handOf11) {
+        if (TESTING) System.out.println("-------------------------------\nchoose10From11Cards begins");
+        if (TESTING) System.out.println("handOf11: " + handOf11);
+
+        double[] allEvalValues = new double[11];
+        for(int i = 0; i < allEvalValues.length; i++){
+            ArrayList<Card> handOf10 = new ArrayList<Card>(handOf11);
+            // EFFICIENCY FOR LATER: can we avoid copying by just telling evalHand which card to ignore?
+            handOf10.remove(handOf11.get(i));
+            allEvalValues[i] = handEval.evalHand(handOf10, this.myTracker, null);
+            if (TESTING) System.out.println("---------------\nRemoving " + handOf11.get(i) + " (index " + i + ") gives hand of 10:\n" + handOf10 + "\neval: " + allEvalValues[i]);
+        }
+
+        ArrayList<Integer> indexOfCardsDiscardedWithTiedMax = new ArrayList<Integer>(); // ArrayList of the indices of discarded cards, corresponding to the hands that are tied for best
+        int currIndex = 0;
+        double maxEval = allEvalValues[currIndex];
+        indexOfCardsDiscardedWithTiedMax.add(currIndex);
+        
+        for(currIndex = 1; currIndex<11; currIndex++){
+            if (allEvalValues[currIndex] > maxEval) {
+                indexOfCardsDiscardedWithTiedMax.clear();
+                maxEval = allEvalValues[currIndex];
+                indexOfCardsDiscardedWithTiedMax.add(currIndex);
+            }       
+            else if (allEvalValues[currIndex] == maxEval)
+                indexOfCardsDiscardedWithTiedMax.add(currIndex);
+        }
+
+        if (TESTING) System.out.println("maxEval: " + maxEval + ", indexOfCardsDiscardedWithTiedMax: " + indexOfCardsDiscardedWithTiedMax);
+            
+        // Choose among the ties: choose the one with the highest point value (to reduce potential deadwood score)
+        int maxPointValue = -1;
+        int indexOfMaxPointValue = -1;
+        for(Integer indexInHandOf11: indexOfCardsDiscardedWithTiedMax) {
+            int currPointValue = GinRummyUtil.getDeadwoodPoints(handOf11.get(indexInHandOf11));
+            if (currPointValue >= maxPointValue) {
+                maxPointValue = currPointValue;
+                indexOfMaxPointValue = indexInHandOf11;
+            }
+        }
+
+        if (TESTING) System.out.println("Choose to discard card at index " + indexOfMaxPointValue + ": " + handOf11.get(indexOfMaxPointValue) + ", with point value " + maxPointValue);
+
+        return handOf11.get(indexOfMaxPointValue);
+        // EFFICIENCY FOR LATER:
+        // is there a way that we can save some of the information we compute here?
+        // At least for the original 10 cards, we don't don't need to call evalHand again each time choose10From11Cards is called.
+        // The other hands are mostly the same too, so is there a way that we can save some of this information?
+    }
+
+    public static void testChoose10From11() {
+        ParamList params = new ParamList();
+        TieBreakingHandEvalPlayer p = new TieBreakingHandEvalPlayer(params);
+        //                                                          0     1     2     3     4     5     6     7     8     9
+        ArrayList<Card> selfCards = OurUtil.makeHand(new String[] {"AD", "2D", "3D", "4D", "5D", "JS", "8S", "9S", "TS", "7S"});
+        p.setCards(selfCards);
+
+        params.set(ParamList.CH_SAMERANK, 1);
+        params.set(ParamList.CH_ONEAWAY, 1);
+        params.set(ParamList.CH_TWOAWAY, 1);
+        p.setHandEvaluator(new ConvHandEvaluator(params));
+        // 7S and JS should be tied for best to drop
+        // new card: 6D
+        Card faceUpCard = Card.strCardMap.get("6D");
+        selfCards.add(faceUpCard);
+        Card discarded = p.choose10From11Cards(selfCards);
+        System.out.println("choose10From11 discarded: " + discarded);
+
+        /*
+        handOf11: [AD, 2D, 3D, 4D, 5D, 7S, 8S, 9S, TS, JS, 6D]
+        0  AD: 2  <----
+        1  2D: 3
+        2  3D: 4
+        3  4D: 4
+        4  5D: 3
+        5  JS: 2  <---- highest value, so discard this one
+        6  8S: 3
+        7  9S: 4
+        8  TS: 3
+        9  7S: 2  <----
+        10 6D: 2  <----
+        */
+    }
+
+    public static void main(String[] args) {
+        testChoose10From11();
+    }
+
+}

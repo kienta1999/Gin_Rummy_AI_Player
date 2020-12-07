@@ -1,0 +1,134 @@
+GA pseudocode:
+
+ConvHandEvaluator[] population = createRandomIndividuals(n)
+// s is a ConvHandEvaluator
+fitnesses = calcFitness(population)
+HandEvalPlayer p1 = new HandEvalPlayer();
+HandEvalPlayer p2 = new HandEvalPlayer();
+
+repeat until done { // for now, just make it a set number of times
+
+    ConvHandEvaluator[] nextGen <-- empty
+    while (nextGen size < n) {
+        x, y <-- select(population, fitnesses)
+        insert crossover(x, y) into nextGen
+    }
+
+    mutate(nextGen)
+
+    population <-- nextGen
+    fitnesses = calcFitness(population)
+} 
+
+--------------------------------------------------------------
+order to implement for ease of testing:
+
+ConvHandEvaluator
+HandEvalPlayer
+calcFitness
+select - make a main that just hardcodes several individuals, with hardcoded made-up fitnesses, make sure the selections happen as you expect
+crossover - hardcode two individuals, observe the results
+mutate - hardcode a population...
+
+--------------------------------------------------------------
+
+public class ConvHandEvaluator {
+
+we need a mutator method that lets you change one of the genes (one of the three numbers)
+
+}
+
+public class HandEvalGA {
+
+    ConvHandEvaluator[] createRandomIndividuals(int n) {
+        make n individuals
+        What is an individual? It's the three numbers. (value of same rank, ....) It's an instance of ConvHandEvaluator
+
+        Let's make the three values sum to 1.
+        sameRankValue (1.5 in the article)
+        oneAwayRankSameSuitValue (2.0)
+        twoAwayRankSameSuitValue (1.0)
+
+        initialize each of the three to a random value from 0 to 1.
+
+        Add up the three values, divide each by that sum ---> this will "normalize" them.
+    }
+
+    double[] calcFitness(ConvHandEvaluator[] pop) {
+        // How well does each individual play the game?
+        HandEvalPlayer p1 = new HandEvalPlayer();
+        HandEvalPlayer p2 = new HandEvalPlayer();
+        GinRummyGame gameManager = new GinRummyGame(p1, p2);
+
+        for each pair of individuals he1 and he2:
+            p1.setHandEvaluator(he1);
+            p2.setHandEvaluator(he2);
+            for lots of times: (100?)
+                winner = gameManager.play();
+
+
+        // we need to count how many games each player wins.
+        // Normalize those counts (divide by total number of games each player plays) - we need the win percentage (in 0 to 1)
+        Put these win percentages in an array of doubles called fitnesses
+        fitnesses[i] is the fitness of the player at pop[i]
+    }
+
+    ConvHandEvaluator[] select(ConvHandEvaluator[] population, double[] fitnesses) {
+        // fitnesses[i] is the fitness of individual at population[i]
+
+        select two individuals "randomly", with probabilities proportional to fitness
+
+        return 2 individuals
+    }
+
+    ConvHandEvaluator[] crossover(ConvHandEvaluator x, ConvHandEvaluator y) {
+        "mix up" the two individuals....
+        there are three genes. Randomly choose if you're going to swap one or two values.
+        swap them.
+        return the 2 resulting individuals
+    }
+
+    void mutate(ConvHandEvaluator[] population) {
+        for each individual:
+            with some small chance, randomly change one of an individual's number
+            2% chance? 5%?
+    }
+
+
+}
+
+public class HandEvalPlayer extends SimpleGinRummyPlayer { // polymorphism: a HandEvalPlayer object is also a SimpleGinRummyPlayer object and a GinRummyPlayer
+
+    private HandEvaluator handEval; // 
+
+    public HandEvalPlayer() {
+    }
+
+    public void setHandEvaluator(HandEvaluator he) {
+        this.handEval = he;
+    }
+
+	@Override
+	public Card getDiscard() {
+        right now, we have 11 cards
+        call handEval.evalHand() on each of the possible 10-card hands
+        find which hand gives the max eval
+        Discard the card that leaves you with that hand.
+    }
+}
+
+public class HandEvalTester() {
+
+    public static void main(String[] args) {
+        // Suppose HandEvalPlayer is done
+        // Suppose ConvHandEvaluator is done, and also AdvancedHandEvaluator
+        HandEvalPlayer p1 = new HandEvalPlayer();
+        p1.setHandEvaluator(new ConvHandEvaluator(1.0, 1.5, 2.0));
+        HandEvalPlayer p2 = new HandEvalPlayer();
+        p2.setHandEvaluator(new AdvancedHandEvaluator(1, 6, 5, 4, 3, 7, 3));
+        // this is polymorphism "many forms" - a ConvHandEvaluator object can also be thought of as a HandEvaluator object.
+
+        // 
+    }
+
+}

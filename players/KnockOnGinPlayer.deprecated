@@ -1,0 +1,113 @@
+package players;
+
+import java.util.ArrayList;
+import players.SimpleFakeGinRummyPlayer;
+import ginrummy.Card;
+import ginrummy.GinRummyUtil;
+import util.OurUtil;
+
+/**
+ * This player is exactly the same as SimpleFakeGinRummyPlayer,
+ * except that it only knocks on gin - never before, never with any deadwood.
+ * 
+ * @author Steven Bogaerts
+ */
+public class KnockOnGinPlayer extends SimpleFakeGinRummyPlayer {
+
+    private static final boolean TESTING = false;
+
+    public KnockOnGinPlayer(ParamList params) {
+        super(params);
+    }
+
+    /**
+     * Remember, the game calls this method to ask the player if it wants to knock.
+     * If the player knocks, the meld set is returned.
+     * If the player does not knock, null is returned.
+     * 
+     * This player only knocks on gin.
+     */
+    @Override
+    public ArrayList<ArrayList<Card>> getFinalMelds() {
+        ArrayList<ArrayList<Card>> result;
+        if (TESTING) System.out.println("Cards:" + cards);
+
+        // Get a list of the best meld sets (there may be multiple ways to meld all the
+        // cards)
+        ArrayList<ArrayList<ArrayList<Card>>> selfBestMeldSets = GinRummyUtil.cardsToBestMeldSets(this.cards);
+
+        // Get either an empty meld list (if no melds available at all), or one of the
+        // best meld sets I have
+        ArrayList<ArrayList<Card>> selfMeldSet = selfBestMeldSets.isEmpty() ? new ArrayList<ArrayList<Card>>() : selfBestMeldSets.get(0);
+
+        if (TESTING) System.out.println("best melds: " + selfMeldSet);
+
+        if (opponentKnocked) {
+            if (TESTING) System.out.println("Opponent knocked, returning best melds.");
+            result = selfMeldSet;
+            // return selfMeldSet; // opponent knocked, so return best melds I have
+        }
+        else { // opponent didn't knock
+            // So only knock if I have gin
+
+            // Count how many cards are in some meld
+            int count = 0;
+            for(ArrayList<Card> meld : selfMeldSet)
+                count += meld.size();
+
+            // if all 10 cards are in some meld, we have gin
+            if (count == 10) {
+                if (TESTING) System.out.println("KnockOnGinPlayer went gin, returning melds.");
+                result = selfMeldSet;
+                // return selfMeldSet;
+            }
+            else {
+                if (TESTING) System.out.println("KnockOnGinPlayer does not have gin.");
+                result = null;
+                // return null; // we don't have gin, so don't knock
+            }
+        }
+		myPerformanceTracker.updateFromGetFinalMelds(result);
+        return result;
+    }
+
+    public static void main(String[] args) {
+        ParamList params = new ParamList(new double[] {});
+        KnockOnGinPlayer player = new KnockOnGinPlayer(params);
+        ArrayList<Card> cards;
+        ArrayList<ArrayList<Card>> returned;
+
+        System.out.println("-------------------");
+        System.out.println("No gin test");
+        cards = OurUtil.makeHand(new String[] {"2C", "2S", "AC", "6S", "6D", "6C", "6H", "JH", "QH", "KH"});
+        player.setCards(cards);
+        returned = player.getFinalMelds();
+        System.out.println("returned: " + returned);
+
+        System.out.println("-------------------");
+        System.out.println("Gin test");
+        cards = OurUtil.makeHand(new String[] {"2C", "3C", "4C", "6S", "6D", "6C", "6H", "JH", "QH", "KH"});
+        player.setCards(cards);
+        returned = player.getFinalMelds();
+        System.out.println("returned: " + returned);
+
+        System.out.println("-------------------");
+        System.out.println("Opponent knock test");
+        cards = OurUtil.makeHand(new String[] {"5C", "4C", "JD", "QS", "KD", "8C", "8S", "8D", "7C", "KS"});
+        player.setCards(cards);
+        player.opponentKnocked = true; // ordinarily gets set via GinRummyGame actions
+        returned = player.getFinalMelds();
+        System.out.println("returned: " + returned);
+
+        /*
+        System.out.println("-------------------");
+        System.out.println("Full game test");
+        GinRummyGame.setPlayVerbose(false);
+        KnockOnGinPlayer p0 = new KnockOnGinPlayer();
+        KnockOnGinPlayer p1 = new KnockOnGinPlayer();
+        GinRummyGame game = new GinRummyGame(p0, p1);
+        game.play();
+        */
+    }
+    
+}

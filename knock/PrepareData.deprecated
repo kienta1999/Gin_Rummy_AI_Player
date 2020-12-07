@@ -1,0 +1,141 @@
+package knock;
+
+import java.util.*;
+import ginrummy.Card;
+
+import java.io.FileWriter;
+import java.io.BufferedWriter;
+// import java.io.BufferedReader;
+import java.io.File;
+import java.util.Scanner;
+
+import players.StateTracker;
+/*
+read the raw_data.txt and convert it to processed_raw_data.txt (the data is not normalized)
+
+Provide additional method to convert the data (containing selfMeldSet, selfDeadwoodPoints, numTurn, score)
+to an ArrayList of Integer
+
+For example, a dataInstance may contain:
+selfMeldSet: [[AS, 2S, 3S, 4S], [6C, 6H, 6S]]
+selfDeadwoodPoints: 3
+numTurn: 30
+score: 5
+
+Then the resulting ArrayList of Integer will be:
+[1/13, 1, 0, 0.8, 6/13, 0, 1. 0.6, 0, 0, 0, 0, 3, 30, 5]
+*/
+public class PrepareData {
+    //divide the length of meld to 5 to normalize
+    // private static final int NORMALIZE_LENGTH_MELD = 5;
+    //each meld has 4 attributes
+    private static final int NUM_ATTRIBUTE_FOR_EACH_MELD = 4;
+    //one meld set has at most 3 meld (max selfMeldSet.size() = 3)
+    private static final int MAX_MELD_SET = 3;
+    //one hand can have at most 3 melds
+
+    //Convert DataInstance to ArrayList of Double - to generate CSV file
+    public static ArrayList<Double> DataInstanceToInputMachineLearning(DataInstance data){
+        //selfMeldSet to List
+        ArrayList<Double> dataML = new ArrayList<Double>();
+        int numMeld = data.selfMeldSet.size();
+        for(ArrayList<Card> meld: data.selfMeldSet){
+            dataML.addAll(meldToDoubleArrayList(meld));
+        }
+        for(int i = 0; i < (MAX_MELD_SET - numMeld)* NUM_ATTRIBUTE_FOR_EACH_MELD; i++){
+            //the next (MAX_MELD_SET - numMeld)* NUM_ATTRIBUTE_FOR_EACH_MELD reserved for (MAX_MELD_SET - numMeld) is empty
+            dataML.add(0.0);
+        }
+
+        dataML.add((double)data.selfDeadwoodPoints);
+        dataML.add((double)data.numTurn);
+        dataML.add(data.multiOppScore); //write value for multiOppScore
+        dataML.add((double)data.score);
+
+        return dataML;
+    }
+
+    //Convert a meld to ArrayList of Double
+    public static ArrayList<Double> meldToDoubleArrayList(ArrayList<Card> meld){
+        ArrayList<Double> meldIntegerList = new ArrayList<>();
+        meldIntegerList.add((double)meld.get(0).getRank());
+        if( meld.get(0).getRank() == meld.get(1).getRank()){
+            //if the meld is rank meld
+            meldIntegerList.add(0.0);
+            meldIntegerList.add(1.0);
+        }
+        else{
+            //if the meld is run meld
+            meldIntegerList.add(1.0);
+            meldIntegerList.add(0.0);
+        }
+        meldIntegerList.add((double)meld.size());
+        return meldIntegerList;
+    } 
+    public static ArrayList<Card> stringToListCard(String[] singleMeldString){
+            ArrayList <Card> singleMeldCard = new ArrayList<>();
+            for(int i = 0; i < singleMeldString.length; i++){
+                singleMeldCard.add(Card.strCardMap.get(singleMeldString[i]));
+            }
+        return singleMeldCard;
+    }
+    public static void main (String[] args) throws Exception{
+        //Read raw data
+        File file = new File("knock\\raw_data.txt");
+        //BufferedReader fileReader = new BufferedReader(file);
+        Scanner scan = new Scanner(file);
+        // ArrayList<ArrayList<Double>> data = new ArrayList<>();
+
+        //list of data 
+        ArrayList<DataInstance> listDataInstance = new ArrayList<>();
+        while(scan.hasNextLine()){
+            //single line of data 
+            String[] singleData = scan.nextLine().split(",");
+
+            //field of DataInstance
+            ArrayList<ArrayList<Card>> selfMeldSet = new ArrayList<>();
+            int selfDeadwoodPoints = Integer.parseInt(singleData[singleData.length - 5]);
+            int numTurn = Integer.parseInt(singleData[singleData.length - 4]);
+            double multiOppScore = Double.parseDouble(singleData[singleData.length - 3]);
+            StateTracker myTracker = StateTracker.deserializeStateTrackerFromString(singleData[singleData.length - 2]);
+            int score = Integer.parseInt(singleData[singleData.length - 1]);
+
+            for(int i = 0; i < singleData.length; i++){
+                if(singleData[i].contains(" ") && singleData[i].length() < 30){
+                    //it is a meld - avoid getting StateTracker String
+                    String[] singleMeldString = singleData[i].split(" ");
+                    // System.out.println(Arrays.toString(singleMeldString));
+                    selfMeldSet.add(stringToListCard(singleMeldString));
+                }
+            }
+            //Convert raw data to DataInstance and add all the DataInstance to list
+            listDataInstance.add(new DataInstance(selfMeldSet, selfDeadwoodPoints, numTurn, multiOppScore, myTracker, score));
+        }
+        scan.close();
+
+
+
+        //convert data to txt file (with numerical value)
+        ArrayList<ArrayList<Double>> processedData = new ArrayList<>();
+
+        FileWriter fileData = new FileWriter("knock\\processed_raw_data.txt");
+        BufferedWriter write_data = new BufferedWriter(fileData); 
+        for (DataInstance data: listDataInstance){
+            //Convert DataInstance to Double ArrayList
+            ArrayList<Double> instance = DataInstanceToInputMachineLearning(data);
+            //Add the data to the list
+            processedData.add(instance);
+            for(int i = 0; i < instance.size(); i++){
+                //write the instance to txt file
+                if(i < instance.size() - 1)
+                    write_data.write(instance.get(i) + ",");
+                else{
+                    write_data.write(instance.get(i) + "");
+                    write_data.newLine();
+                }
+            }
+        }
+        write_data.close();
+
+    }
+}
